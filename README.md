@@ -10,7 +10,7 @@ with WorldView-3 images and machine learning model (U-Net).
 
 # Project Background
 
-This work was funded by Few & Far Collections as part of Oppenheimer Programme in
+This work was funded by Few & Far Collection as part of the Oppenheimer Programme in
 African Landscapes Systems (OPALS: https://opals-exeter.org/). 
 We conducted field surveys at two sites: Kremetart and Mapungubwe National Park.
 
