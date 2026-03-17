@@ -1,0 +1,436 @@
+---
+title: "Objective_Three_Analysis"
+author: "Chafika Phiri"
+toc: true
+number-sections: true
+highlight-style: pygments
+format: 
+  html:
+    code-fold: true
+    html-math-method: katex
+    code-line-numbers: true
+---
+
+# Introduction
+
+The aim of this study is to test and evaluate machine learning (U-Net) modelling approaches and satellite remotely sensed data to map baobab distribution. We address the following research questions: (i) Does U-Net model segmentation performance in mapping baobabs differ with spatial grain of imagery? (ii) Does baobab canopy sizes influence U-Net model performance? (iii) Does using multi-seasonal improve the U-Net model performance? (iv) Does the landscape complexity influence the U-Net model performance? We hypothesise that model performance metrics decrease as we increase the spatial grain of satellite imagery. The comparisons of the performance on different spatial grain will be valuable for identifying appropriate cost-effective satellite datasets for the development of population monitoring tools. 
+
+# Methods
+
+## **Experimental Design**
+
+This study evaluates U-Net, a deep learning segmentation model, to map baobab trees using satellite remote sensing data across different landscapes. We designed an experiment comparing model performance across satellite imagery with different spatial grains to test how image resolution influences segmentation accuracy. We trained and validated the model using manually annotated baobab canopy data. We also assessed whether canopy size, landscape complexity, and the inclusion of multi-seasonal imagery affected model accuracy. We tested each factor independently to identify the conditions under which the U-Net performs best, so that we can inform which satellite datasets are most suitable for mapping baobab distribution.
+
+## **Study Areas**
+
+The study was conducted at two sites (Kremetart Game Farm and Mapungubwe National Park) in the north of Limpopo province in South Africa. Both sites support populations of baobabs, but differ in land use and vegetation structure, providing a natural contrast for testing baobab mapping methods. Our access to Worldview-3 data restricted our study areas to 50 km² at each site. 
+Focal area 1 covers 50 km2, encompassing some parts of Kremetart Game Farm and its surrounding areas (Figure 8a), located on the northern slopes of the Soutpansberg mountains. The area is centred on 22.42° S latitude and 30.33° E longitude. This study area was chosen due to the high density of baobab trees and the support of the landowners. It experiences three distinct seasonal changes: hot-wet (late November to April), cold-dry (May to August), and hot-dry (September to early November) seasons (Schulze, 1997). Temperatures range from 16°C to 40°C during the hot-wet season, 12°C to 22°C in the cold-dry season, and 12°C to 22°C during the hot-dry season (Kephe et al., 2016). The vegetation is low, sparse woodland mainly dominated by a variety of species of mopane. The vegetation in the Soutpansberg mountain range area was broadly described as the Savanna Biome (Mucina and Rutherford, 2006). 
+
+Focal area 2 covers 50 km2 within the Mapungubwe National Park (Figure 8b), located on the southern banks of the Limpopo River, which borders Botswana and Zimbabwe to the north. The Park spans approximately 280 km², centred on -22.23137° S latitude and 29.42133° E longitude, and is part of the Greater Mapungubwe Transfrontier Conservation Area, which covers an area of 3,065 km² (Coetsee and Wigley, 2016). The area was chosen as a comparison to our core study site and due to the presence of baobabs. The park has a mean annual temperature of 21.6 °C, with monthly minimum averages ranging from 7.2 °C to 20.3 °C and maximum averages from 24.7 °C to 32.0 °C (O’connor and Kiker, 2004). The vegetation is classified into three main types: Subtropical Alluvial Vegetation, Musina Mopane Bushveld, and Limpopo Ridge Bushveld, while riparian areas along the Limpopo River are classified as Lowveld Riverine Forest (Mucina and Rutherford, 2006).
+
+
+## **Optical Satellite Data**
+
+We acquired three satellite images from the WorldView-3 sensor (Maxar; 0.31 m panchromatic, 1.24 m multispectral, eight bands), captured on different dates. Images were taken in two seasons: the dry season (leaf-off) and the wet season (leaf-on) for the Kemetart site, in July and February. At Mapungubwe National Park, we used only the July image. 
+
+To ensure spatial alignment, scenes were co-registered using the function in the RStoolbox package (V1.0.2.1, Leutner et al., 2025) based on maximum mutual information as the similarity measure. To improve spatial resolution, we pansharpened the WorldView-3 and GeoEye-1 images. In order to test the influence of multi-seasonal data to improve classification, we performed cloud and shadow masking on our February Kremetart image using a deep learning model called OmniCloudMask (Wright et al., 2025), using the Reticulate package (V1.42.0, Ushey et al., 2025). No atmospheric correction was applied to the data.
+
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: Packages
+
+# Setting up environment 
+# Clean environment
+
+#rm(list = ls(all.names = TRUE)) # will clear all objects including hidden objects
+#gc() # free up memory and report the memory usage
+# Set seed
+#set.seed(42)
+
+
+# Load the required packages 
+
+library(terra)        # for handling raster data
+library(tidyverse) # includes ggplot2, for data visualisation. dplyr, for data manipulation.
+library(RColorBrewer) # colour collection for visualisation
+library(reshape2)    # for data manipulation
+library(patchwork)  # panel visualisation
+library(gt)         # for tables
+library(gtExtras)  # extension for tables
+
+
+
+# Define the theme to be used
+
+theme_fancy <- function() {
+  theme_bw() +
+    theme(
+      text = element_text(family = "Helvetica"),
+      axis.text = element_text(size = 10, color = "black"),
+      axis.title = element_text(size = 10, color = "black"),
+      axis.line.x = element_line(linewidth = 0.5, color = "black"),
+      axis.line.y = element_line(linewidth = 0.5, color = "black"),
+      axis.ticks = element_line(linewidth = 0.4, color = "black"),
+      panel.border = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), units = , "cm"),
+      plot.title = element_text(
+        size = 10,
+        vjust = 1,
+        hjust = 0.5,
+        color = "black"
+      ),
+      legend.text = element_text(size = 9, color = "black"),
+      legend.title = element_text(size = 9, color = "black"),
+      legend.position.inside = c(0.9, 0.9),
+      legend.key.size = unit(0.9, "line"),
+      legend.background = element_rect(
+        color = "black",
+        fill = "transparent",
+        linewidth = 2,
+        linetype = "blank"
+      )
+    )
+}
+```
+
+
+## **Image differentiation**
+
+To enhance tree crown variation in the images, we performed image differentiation by subtracting the image obtained in February from the image obtained in July (See figures below). However, the results were not as expected; the tree crowns are looking blurred and may not add value to our training dataset.
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: Image_differenciation
+
+# Load image worldview-3 image bands differences between dry and  wet seasons
+
+Band_1 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_1_Difference.tif")
+Band_2 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_2_Difference.tif")
+Band_3 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_3_Difference.tif")
+Band_4 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_4_Difference.tif")
+Band_5 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_5_Difference.tif")
+Band_6 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_6_Difference.tif")
+Band_7 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_7_Difference.tif")
+Band_8 <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Band_8_Difference.tif")
+Band_all_bands_july <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/Kremetart_All_Bands_Difference_Mosaic.tif")
+ndvi_july <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/128_sizes/NDVI_July.tif")
+
+# plot the images
+
+plot(Band_1, main = "Band 1 Difference between dry and wet seasons")
+plot(Band_2, main = "Band 2 Difference between dry and wet seasons")
+plot(Band_3, main = "Band 3 Difference between dry and wet seasons")
+plot(Band_4, main = "Band 4 Difference between dry and wet seasons")
+plot(Band_5, main = "Band 5 Difference between dry and wet seasons")
+plot(Band_6, main = "Band 6 Difference between dry and wet seasons")
+plot(Band_7, main = "Band 7 Difference between dry and wet seasons")
+plot(Band_8, main = "Band 8 Difference between dry and wet seasons")
+plotRGB(Band_all_bands_july, r = 5, g = 3, b = 2, stretch = "lin", main = "All bands difference between dry and wet seasons")
+plot(ndvi_july, main = "NDVI Difference between dry and wet seasons")
+```
+
+
+## **Reference data and patch extraction**
+
+To train the model, we manually digitised 689 tree crown polygons as vector features and stored them in GeoPackage format, with each polygon having a class value identifying baobab crowns (Class = 1). For each digitised crown polygon, the centroid coordinates were computed and used as the centre point for a fixed-size image chip. Patches of 128 × 128 pixels were extracted, centred on each crown centroid (see figure below). We generated 1, 168 image chips, 479 from wet season image (Kremetart only) and 689 from dry season (Kremetart and Mapungubwe images). For each image patch, a binary mask was generated by rasterising the individual crown polygon and assigning pixel values of 1 to crown pixels and NA to background. Patches whose bounding extent extended beyond the image boundary were excluded to avoid edge effects and cutting the crown. All extracted patches were saved as GeoTIFF files. This process resulted in a dataset of image and mask pairs, where each pair corresponds to a baobab crown and its surrounding context, which was used for model training and validation.
+
+## **Spatial Autocorrelation**
+
+Spatial autocorrelation in remotely sensed datasets causes nearby pixels to share similar values, which can reduce the independence between training and test samples and may cause the model to produce biased results (Karasiak et al., 2022). To address spatial autocorrelation, we deployed a six-fold spatial cross-validation strategy. The full dataset of image and mask pairs was grouped into six groups, where the geographic centroid of each image chip was computed from its extent. Centroids were then clustered into six spatially neighbouring groups using a k-means clustering resampling plan (Wang et al., 2023). This ensured that chips within each fold were geographically close to one another and spatially separated from chips in the remaining folds. On each of the six cross-validation iterations, five folds were put together to form the training set, and the withheld fold served as the independent validation set, such that the model was never validated on locations geographically similar to those used for training.
+
+## **U-Net Architecture**
+
+The U-Net deep learning architecture has recently become widely adopted in vegetation remote sensing due to its accuracy and flexibility (Brandt et al., 2020; Huang, K. et al., 2021; Reiner et al., 2023). U-Net, originally developed for medical imaging, is a convolutional neural network (CNN) specifically designed for semantic segmentation tasks, characterised by its symmetric U-shape with a contracting path (encoder), an expansive path (decoder), and skip connections (Ronneberger et al., 2015). The encoder extracts contextual information, while the decoder provides precise localisation, and the skip connections allow the integration of low-level features like edges and textures with high-level features such as object shapes, producing more accurate segmentations (Lomeo and Singh, 2022; Ronneberger et al., 2015). Because of these design features, U-Net has established strong performance in various remote sensing image analysis applications, including the segmentation of baobab trees in satellite images of the Sahelian region (Huang, K. et al., 2024). 
+
+We adopted the model architecture of Ronneberger et al. (2015). We built and trained the U-Net model using torch, torchvision, and luz packages in R on all the imagery with different spatial grain (Figure 3). The architecture of the U-net model we employed is composed of four sequential double convolutional layers in the encoder, max pooling-based downsampling, a bottleneck block, and nearest neighbour convolution upsampling with skip connections that concatenate encoder feature maps to decoder layers. We applied batch normalisation to improve model training efficiency, as suggested by (Ioffe and Szegedy, 2015). The ReLU activations were used to support stable and efficient training. Finally, the model was configured with a combined dice and focal loss function suitable for multi-class semantic segmentation and optimised using the Adam algorithm to mitigate class imbalance. 
+
+## **Model Training**
+
+Our input images had eight multispectral bands and a target (labelled masks) with two classes (0,1). We chipped images into 128 x 128 pixels, and pixel values were normalised to convert the values to a range of zero and one. To mitigate spatial autocorrelation, we trained and validated the U-Net model, using a 5-fold cross-validation approach (Koldasbayeva et al., 2024). The model output was a three-channel tensor corresponding to the defined classes (background, baobab, and non-baobab). To ensure that the model learns to identify tree features such as edges, textures, and shapes rather than just spatial positions, we applied data augmentation techniques, including horizontal flip and vertical flip, with a default 50% probability (Alomar et al., 2023). We trained the model for 100 epochs with a batch size of eight, using a learning rate of 0.0001. We monitored the training process using the combined dice and focal loss function, and performance metrics such as Intersection over Union (IoU), precision, recall, F1-score, and accuracy for both training and validation sets. The best-performing model will be selected based on the lowest validation loss.
+
+## **Patch Sizes**
+
+To select an appropriate patch size, we first trained the model using three different data chip sizes: 512×512, 256×256, and 128×128 pixels. For each size, we monitored the training using the loss curves for both the training and validation sets (see Figure below). When training the model, our objectives were to obtain a smoothly decreasing loss curve (indicating stable gradient descent), and minimize the gap and variance between the training and validation loss (indicating better generalisation).Among the three chip sizes, the 128×128 pixels produced the most stable and loss curves, with lower variance between training and validation losses compared to 256×256 and 512×512. Based on these observations, we selected 128×128 patches for all subsequent analyses.
+
+```{r}
+#| echo: false
+#| warning: false 
+
+# Load and combine metrics from different model sizes
+
+patch_512x512  <- read_csv("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/large_crowns_augmentation1_log.csv")  %>%  
+  mutate(size = "patch_512x512 ")
+patch_256x256  <- read_csv("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/256large_crowns_augmentation1_log.csv") %>% 
+ mutate(size = "patch_256x256")
+patch_128x128  <- read_csv("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/128large_crowns_augmentation1_log.csv")  %>%
+  mutate(size = "patch_128x128")
+
+all_metrics <- bind_rows(patch_128x128, patch_256x256, patch_512x512)
+
+
+# Plot metrics over epochs for different model sizes
+
+# re-order sizes
+
+loss <- ggplot(
+  all_metrics,
+  aes(
+    x = epoch,
+    y = loss,
+    color = size,
+    linetype = set
+  )
+) +
+  geom_line(linewidth = 1) +
+  scale_linetype_manual(
+    values = c(train = "dotted", valid = "solid")
+  ) +
+  labs(
+    title = "Training and Validation loss over Epochs",
+    x = "Epoch",
+    y = "loss",
+    color = "Patch size",
+    linetype = "Dataset"
+  ) +
+  theme_fancy()
+
+loss
+
+ggsave(
+  loss,
+  filename = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Plots/loss_training.png",
+  width = 29.7,
+  height = 21.0,
+  units = "cm",
+  dpi = 600
+)
+
+```
+
+
+Plots
+
+```{r}
+#| echo: false
+#| warning: false
+
+
+# multiple metrics in one plot
+
+long_metrics <- all_metrics %>%
+  pivot_longer(
+    cols = c(loss, recall, iou, precision, f1),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+plot_metrics <- ggplot(
+  long_metrics,
+  aes(
+    x = epoch,
+    y = value,
+    color = size,
+    linetype = set
+  )
+) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_linetype_manual(
+    values = c(train = "dotted", valid = "solid")
+  ) +
+  labs(
+    title = "Training and Validation Metrics Large Crown Sizes",
+    color = "Patch size",
+    linetype = "Dataset"
+  ) +
+  theme_fancy()
+
+plot_metrics
+
+ggsave(
+  plot_metrics,
+  filename = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Plots/Large_Training_All_Metrics_plot.png",
+  width = 29.7,
+  height = 21.0,
+  units = "cm",
+  dpi = 600
+)
+
+```
+
+
+## **Tree-Crown Sizes**
+
+To achieve balanced representation across crown-size categories for model training, we implemented an equal-percentage stratification approach. Crown areas were measured by identifying connected components in the masks using functions in the terra package, with pixel counts converted to square meters using the imagery's spatial resolution (0.3 m). This resulted in equal representation (approximately 33% each) across small, medium, and large size classes. This stratification method prevented size-based bias in model training and validation datasets.
+
+```{r}
+#| fig.cap: "Violin plots showing results of model training performance across crown sizes"
+#| fig.align: "center"
+#| echo: false
+#| warning: false
+
+# CSV files paths
+
+small_crowns  <- "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/small_logs/"
+medium_crowns <- "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/medium_logs/"
+large_crowns  <- "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/large_logs/"
+
+# Function to read and combine all CSVs from a folder
+
+read_folder <- function(folder_path, size_label) {
+  list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE) %>%
+    lapply(read.csv) %>%
+    bind_rows() %>%
+    mutate(size = size_label)
+}
+
+all_data <- bind_rows(
+  read_folder(small_crowns,  "small"),
+  read_folder(medium_crowns, "medium"),
+  read_folder(large_crowns,  "large")
+)
+
+#colnames(all_data)  
+
+# Mean data frame grouped by epoch
+
+# Summary table 
+
+mean_all_metrics <- all_data %>%
+  group_by(size) %>%
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE))) %>%
+  mutate(across(where(is.numeric), \(x) round(x, 2))) %>%
+  arrange(size)
+
+print(mean_all_metrics)
+
+mean_all_epochs <- all_data %>% 
+  group_by(size, epoch) %>% 
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
+
+#print(mean_all_epochs)
+
+# Reshape to long format
+
+long_data <- mean_all_epochs %>%
+  pivot_longer(
+    cols      = c(loss, iou, precision, recall, f1, acc,
+                  loss.1, iou.1, precision.1, recall.1, f1.1, acc.1),
+    names_to  = "metric",
+    values_to = "value"
+  ) %>%
+  mutate(
+    phase       = ifelse(grepl("\\.1$", metric), "Validation", "Training"),
+    metric_name = gsub("\\.1$", "", metric),
+    size        = factor(size, levels = c("small", "medium", "large"))
+  )
+
+#print(long_data)
+
+# Violin plot
+
+
+ggplot(long_data, aes(x = size, y = value, fill = phase)) +
+  geom_violin(trim = FALSE, widith = 8, position = position_dodge(0.9), alpha = 0.85) +
+  facet_wrap(~ metric_name, scales = "free_y") +
+  scale_fill_manual(values = c("Training" = "blue", "Validation" = "green")) +
+  labs(
+    title = "Training vs Validation Metrics by Crown Size",
+    x     = "Crown Size",
+    y     = "Value",
+    fill  = "Phase"
+  ) +
+  theme_fancy()
+
+ggplot(long_data, aes(x = size, y = value, fill = phase)) +
+  geom_violin(trim = FALSE, widith = 8, position = position_dodge(0.9)) +
+  #stat_summary(fun = mean, geom = "point", shape = 21, size = 3, colour = "darkblue",
+               #position = position_dodge(0.9)) +
+  facet_wrap(~ phase) +
+  labs(
+    title = "Training vs Validation Metrics by Crown Size",
+    x     = "Crown Size",
+    y     = "Performance"
+  ) +
+  theme_fancy()
+
+
+
+ggplot(long_data %>% 
+         filter(metric_name == "f1", phase == "Validation"), aes(x = size, y = value, fill = phase)) +
+  geom_violin(trim = FALSE, widith = 8, position = position_dodge(0.9)) +
+  #stat_summary(fun = mean, geom = "point", shape = 21, size = 3, colour = "darkblue",
+               #position = position_dodge(0.9)) +
+  facet_wrap(~ phase) +
+  labs(
+    title = "Training vs Validation Metrics by Crown Size",
+    x     = "Crown Size",
+    y     = "Performance"
+  ) +
+  theme_fancy()
+
+
+
+```
+
+
+Leraning curve plots
+
+
+```{r}
+#| echo: false
+#| warning: false
+
+# multiple metrics in one plot
+
+plot_metrics <- ggplot(
+  long_data,
+  aes(
+    x = epoch,
+    y = value,
+    color = size
+  )
+) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~ metric, scales = "free_y") +
+  scale_linetype_manual(
+    values = c(train = "dotted", valid = "solid")
+  ) +
+  labs(
+    title = "Training and Validation Metrics Large Crown Sizes",
+    color = "Crown size",
+    linetype = "Dataset",
+    y = "Epoch",
+    x = "Performance"
+  ) +
+  theme_fancy()
+
+plot_metrics
+
+ggsave(
+  plot_metrics,
+  filename = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/Plots/256Large_Training_metrics_plot.png",
+  width = 29.7,
+  height = 21.0,
+  units = "cm",
+  dpi = 600
+)
+
+```
+
+## **Landscape Complexity**
+
+To assess model performance across landscapes that differ in complexity, we train and validate model, and compare the performance metrics between two study sites: Kremetart Game Farm Area (hereafter referred to as Focal Area 1) and Mapungubwe National Park (hereafter referred to as Focal Area 2). The two areas differ in environmental complexity. Imagery from Focal Area 1 contains mixed land-cover types, including agricultural, open-canopy, and dense-canopy areas, which is more heterogeneous landscape for tree detection. In contrast, imagery from Focal Area 2 is dominated by open-canopy vegetation, which is a less heterogeneous landscape.
+
+## **Performance Evaluation**
+
+To evaluate model performance, we will use independent testing patches. We will first assess pixel-level performance using confusion matrices, precision, recall, and F1-score. These parameters are key tools to evaluate how well the model classifies each pixel. The parameters also help in understanding the model's handling of True Positives (TP), True Negatives (TN), False Positives (FP), and False Negatives (FN). Furthermore, we will conduct object-level validation by comparing the number of detected trees with manually identified trees to quantify counting bias (After Huang, K. et al., 2024).
+
+
