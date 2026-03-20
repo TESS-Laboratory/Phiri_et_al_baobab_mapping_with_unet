@@ -22,8 +22,8 @@ library(ggpubr)
 
 # File paths containing images and mask ----------------------------------------
 
-image_dir <- "~/Chafika/image patches/New_patches_128pixels/small/images"
-mask_dir <- "~/Chafika/image patches/New_patches_128pixels/small/masks"
+image_dir <- "~/Chafika/image patches/New_patches_256pixels/large/images"
+mask_dir <- "~/Chafika/image patches/New_patches_256pixels/large/masks"
 
 # Get full file paths for all TIFF images in the image directory
 image_paths <- list.files(image_dir, full.names = TRUE, ignore.case = TRUE, pattern = "\\.(tif|tiff)$")
@@ -161,8 +161,8 @@ for(i in seq_along(folds$splits)) {
   train_ds <- baobab_dataset(train_df$image, train_df$mask)
   test_ds  <- baobab_dataset(test_df$image, test_df$mask)
   
-  train_dl <- dataloader(train_ds, batch_size = 4, shuffle = TRUE, drop_last = TRUE)
-  test_dl  <- dataloader(test_ds, batch_size = 4, shuffle = FALSE, drop_last = FALSE)
+  train_dl <- dataloader(train_ds, batch_size = 8, shuffle = TRUE, drop_last = TRUE)
+  test_dl  <- dataloader(test_ds, batch_size = 8, shuffle = FALSE, drop_last = FALSE)
   
 }
 
@@ -177,6 +177,122 @@ print(table(as_array(batch$y)))
 print(batch$y$dtype)
 #print(batch$y[10])
 #batch 
+
+
+# Define the UNet model -------------------------------------------------------
+
+unet <- nn_module(
+  "unet",
+  
+  initialize = function(channels_in = 8,
+                        n_classes = 2,
+                        depth = 5,
+                        n_filters = 6) {
+    
+    self$down_path <- nn_module_list()
+    
+    prev_channels <- channels_in
+    for (i in 1:depth) {
+      self$down_path$append(down_block(prev_channels, 2 ^ (n_filters + i - 1)))
+      prev_channels <- 2 ^ (n_filters + i -1)
+    }
+    
+    self$up_path <- nn_module_list()
+    
+    for (i in ((depth - 1):1)) {
+      self$up_path$append(up_block(prev_channels, 2 ^ (n_filters + i - 1)))
+      prev_channels <- 2 ^ (n_filters + i - 1)
+    }
+    
+    self$last = nn_conv2d(prev_channels, n_classes, kernel_size = 1)
+  },
+  
+  forward = function(x) {
+    
+    blocks <- list()
+    
+    for (i in 1:length(self$down_path)) {
+      x <- self$down_path[[i]](x)
+      if (i != length(self$down_path)) {
+        blocks <- c(blocks, x)
+        #blocks <- c(blocks, list(x))  # FIX: wrap tensor in list() to preserve it as a single element
+        x <- nnf_max_pool2d(x, 2)
+      }
+    }
+    
+    for (i in 1:length(self$up_path)) {  
+      x <- self$up_path[[i]](x, blocks[[length(blocks) - i + 1]]$to(device = device))
+    }
+    
+    self$last(x)
+    #torch_sigmoid(self$last(x))
+  }
+)
+
+down_block <- nn_module(
+  "down_block",
+  
+  initialize = function(in_size, out_size) {
+    self$conv_block <- conv_block(in_size, out_size)
+  },
+  
+  forward = function(x) {
+    self$conv_block(x)
+  }
+)
+
+up_block <- nn_module(
+  "up_block",
+  
+  initialize = function(in_size, out_size) {
+    
+    self$up = nn_conv_transpose2d(in_size,
+                                  out_size,
+                                  kernel_size = 2,
+                                  stride = 2)
+    self$conv_block = conv_block(in_size, out_size)
+  },
+  
+  forward = function(x, bridge) {
+    
+    up <- self$up(x)
+    torch_cat(list(up, bridge), 2) %>%
+      self$conv_block()
+  }
+)
+
+conv_block <- nn_module( 
+  "conv_block",
+  
+  initialize = function(in_size, out_size) {
+    
+    self$conv_block <- nn_sequential(
+      nn_conv2d(in_size, out_size, kernel_size = 3, padding = 1),
+      nn_relu(),
+      nn_dropout(0.6),
+      nn_conv2d(out_size, out_size, kernel_size = 3, padding = 1),
+      nn_relu()
+    )
+  },
+  
+  forward = function(x){
+    self$conv_block(x)
+  }
+)
+
+device <- torch_device(if(cuda_is_available()) "cuda" else "cpu")
+
+# FIX: use correct argument names that match initialize() — channels_in and n_classes
+model <- unet(channels_in = 8, n_classes = 2, depth = 5)$to(device = device)
+
+# Test with dummy input (batch size 1, 8x512x512 image)
+x <- torch_randn(1, 8, 512, 512)$to(device = device)  # FIX: send x to same device as model
+y <- model(x)
+
+cat("Output shape:", paste(dim(y), collapse = " x "), "\n")
+
+
+
 
 # ------------------------------------------------------------------------------
 # visualise the batch sample
@@ -496,7 +612,7 @@ dice_loss_binary <- function(pred, target) {
 #}
 
 # Focal Loss – down-weights easy examples, focuses training on hard pixels
-focal_loss_binary <- function(logits, target, gamma = 2.0, alpha = 0.55) {
+focal_loss_binary <- function(logits, target, gamma = 2.0, alpha = 0.65) {
   probs      <- nnf_softmax(logits, dim = 2)
   prob_class2 <- probs[, 2, , ]
   is_class2  <- (target == 2)$to(dtype = probs$dtype)
@@ -515,10 +631,55 @@ combined_focal_dice_binary <- function(pred, target,
                                        lambda_dice  = 1.0,
                                        lambda_focal = 1.5,
                                        gamma = 2.0,
-                                       alpha = 0.55) {
+                                       alpha = 0.65) {
   lambda_focal * focal_loss_binary(pred, target, gamma, alpha) +
     lambda_dice  * dice_loss_binary(pred, target)
 }
+
+
+
+# Fit the model
+
+fitted_model <- unet %>%
+  setup(
+    loss      = function(pred, target) combined_focal_dice_binary(
+      pred, target, 
+      lambda_dice = 1.0, 
+      lambda_focal = 1.5,
+      gamma = 2.0,
+      alpha = 0.65),       
+    optimizer = optim_adam,
+    metrics = list(luz_metric_iou_binary(),
+                   luz_metric_precision_binary(),
+                   luz_metric_recall_binary(),
+                   luz_metric_f1_binary()
+    )    
+  ) %>%
+  set_hparams(
+    channels_in = 8,
+    n_classes   = 2,                           # changed from 1 to 2
+    depth       = 5
+  ) %>%
+  set_opt_hparams(lr = 1e-4) %>%
+  fit(
+    data       = train_dl,
+    epochs     = 100,
+    valid_data = test_dl,
+    callbacks  = list(
+      luz_callback_early_stopping(patience = 20),
+      luz_callback_model_checkpoint(path = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/256_models/256large_crowns_newmodel_best_model.pt")
+    )
+  )
+
+plot(fitted_model)
+
+
+evaluation <- fitted_model %>% 
+  evaluate(data = test_dl)
+metrics <- get_metrics(evaluation)
+print(metrics)
+
+
 
 # Fit the model-----------------------------------------------------------------
 
@@ -555,14 +716,14 @@ fitted <- setup(
           min_delta = 0
         ),
         luz_callback_model_checkpoint(
-          path = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/models/128small_crowns_Unet2_best_model.pt",
+          path = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/256_models/256large_crowns_Unet2_best_model.pt",
           monitor = "valid_loss",  
           mode = "min",
           save_best_only = TRUE,
           min_delta = 0
         ),
         luz_callback_metrics(),
-        luz_callback_csv_logger("~/Chafika/Phiri_et_al_baobab_mapping_with_unet/CSV files/128small_crowns_training2_log.csv"))
+        luz_callback_csv_logger("~/Chafika/Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/256_models/256large_crowns_training2_log.csv"))
   )
 
 plot(fitted)
@@ -573,7 +734,7 @@ evaluation <- fitted %>% evaluate(data = test_dl)
 metrics <- get_metrics(evaluation)
 print(metrics)
 
-luz_save(fitted, path = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/models/128small_crowns_unet2_all.rds")
+luz_save(fitted, path = "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/256_models/256large_crowns_unet2_all.rds")
 
 
 # ========================
@@ -645,6 +806,7 @@ fitted_reload <- luz_load("~/Chafika/Phiri_et_al_baobab_mapping_with_unet/models
 
 #---------------===================================================
 
+
 # Number of samples to visualize
 n_show <- 3  
 
@@ -669,7 +831,7 @@ for (i in 1:n_show) {
   mask_tensor <- sample[[2]]$unsqueeze(1)
   
   # Get prediction
-  pred <- predict(fitted_reload, img_tensor)
+  pred <- predict(fitted_model, img_tensor)
   pred_class <- torch_argmax(pred, dim = 2)$squeeze()
   
   # Convert to arrays
@@ -811,6 +973,20 @@ final_plot <- final_plot +
 
 # Display the plot
 print(final_plot)
+
+# forgot to log in the csv file, then saved it this way
+
+library(readr)
+
+p <- plot(fitted_model)
+
+#p$data
+
+write_csv(
+  p$data,
+  "~/Chafika/Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/256_models/training_log.csv"
+)
+
 
 # Save 
 ggsave("small_crowns_segmentation_results_128pixels.tiff", final_plot, 
