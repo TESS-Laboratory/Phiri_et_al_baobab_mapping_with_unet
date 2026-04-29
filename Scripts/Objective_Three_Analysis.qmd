@@ -800,7 +800,7 @@ seasons_fig_violin <- ggplot(seasons_long_data, aes(size, value, fill = phase)) 
   facet_wrap(~ metric, nrow = 2, scales = "free_y") +
   scale_fill_manual(values = phase_palette) +
   scale_y_continuous(breaks = pretty_breaks(4)) +
-  labs(x = "Sites", y = "Metric value") +
+  labs(x = "Seasons", y = "Metric value") +
   theme_nature()
  
 ggsave(file.path(out_dir, "Seasons_fig_violin.pdf"),
@@ -923,6 +923,8 @@ seasons_fold_table
 
 In order to meet the needs of ecological resource managers, we will conduct object-level evaluation by comparing the number of detected trees within a one square kilometre area to manually identified trees to quantify counting bias (After Huang, K. et al., 2024). To gain more insights into the model performance, we also undertook pixel-level evaluation using confusion matrices, precision, recall, and F1-score.
 
+
+
 ```{r}
 
 #| echo: false
@@ -941,52 +943,423 @@ In order to meet the needs of ecological resource managers, we will conduct obje
 #plot(mixed_july_crown_prediction, main = "mixed_july_crown_prediction")
 ```
 
-We conducted object-level validation by comparing manually digitised tree crown polygons within an area of 9.25 km2 against a binary prediction raster using Intersection over Union (IoU ≥ 0.5) as the matching criterion. Each connected group of predicted tree pixels was isolated as an individual object. A match between predicted and the manually digitised crowns were determined by the overlap between their polygons. The model predicted only 185 true positives with relative counting bias of +430.6%, which indicate that the model is under-performing on the landscape level. Visual inspection shows that there are fragmented single tree crowns and others are misclassified into background and non-baobab. The model is failing to capture the majority of real baobab trees. The next steps, we will continue to finetuning the model to reduce over-segmentation.
+We conducted object-level validation by comparing manually delineated tree crown polygons. We selected two areas from each site that were well observed and excluded areas that we did not visit, as we do not know whether there were false positives. Each connected group of predicted tree pixels was isolated as an individual object. A match between predicted and the manually digitised crowns were determined by the overlap between their polygons. 
+
+To measure count and size errors, we measured the difference between the predicted tree crowns and the manually delineated tree crowns polygons. We computed a match rate of predicted baobab regions that are overlapping manually delineated tree crown polygons by applying a 20 % threshold. We also compared crown area class distributions (small/medium/large).
+
+```{r}
+
+#| echo: false
+#| warning: false
+#| messages: false
+
+# object-level tree detection validation
+
+# helper to count connected objects in a binary raster
+
+count_objects <- function(r) {
+  r_clean <- ifel(r == 1, 1, NA)
+  p <- patches(r_clean, directions = 8, zeroAsNA = TRUE)
+  length(unique(values(p, na.rm = TRUE)))
+}
+
+
+# load the data
+
+polygons <- vect("C:/Users/cp844/OneDrive - University of Exeter/Data/Tree_Crown_Polygons/Site_one_Kremetart_class_one_tree_polygons.gpkg")
+prediction <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/My_Dataset/outputs/krem_site_one_predictionresnet.tif")
+
+
+# tidy up the class 1 (true) crown polygons
+
+class1 <- polygons[polygons$Class == 1, ]
+class1 <- project(class1, crs(prediction))
+class1 <- crop(class1, ext(prediction))
+stopifnot("No Class 1 polygons found after cropping" = nrow(class1) > 0)
+
+N_true <- nrow(class1)
+
+
+# mask out class 2 crowns from the prediction
+
+class2 <- polygons[polygons$Class == 2, ]
+class2 <- project(class2, crs(prediction))
+class2 <- crop(class2, ext(prediction))
+
+if (nrow(class2) > 0) {
+  class2_mask <- rasterize(class2, prediction, field = 1, background = NA)
+  prediction  <- ifel(!is.na(class2_mask), NA, prediction)
+  rm(class2_mask)
+}
+
+
+# crop and threshold the prediction
+
+class1_buffered <- buffer(class1, width = 50)
+prediction_crop <- crop(prediction, ext(class1_buffered))
+
+threshold <- 0.2
+pred_bin  <- prediction_crop > threshold
+
+
+# turn the binary prediction into blob polygons
+
+pred_binary_clean <- ifel(pred_bin == 1, 1, NA)
+pred_patches      <- patches(pred_binary_clean, directions = 8, zeroAsNA = TRUE)
+pred_poly         <- as.polygons(pred_patches, dissolve = TRUE)
+pred_poly$pred_id <- seq_len(nrow(pred_poly))
+
+pred_poly <- makeValid(pred_poly)
+class1    <- makeValid(class1)
+
+N_pred <- nrow(pred_poly)
+
+
+# match rate: how many true crowns are at least 20% covered by a blob
+
+class1$gt_id           <- seq_len(nrow(class1))
+pred_poly$area_pred_m2 <- expanse(pred_poly)
+class1$area_true_m2    <- expanse(class1)
+
+intersection <- terra::intersect(pred_poly, class1)
+stopifnot("No overlap geometries — check projection & extents." =
+            nrow(intersection) > 0)
+intersection$inter_area_m2 <- expanse(intersection)
+inter_df <- as.data.frame(intersection)
+
+overlap_per_gt <- inter_df %>%
+  group_by(gt_id) %>%
+  summarise(total_inter_m2 = sum(inter_area_m2, na.rm = TRUE),
+            .groups        = "drop")
+
+gt_df <- as.data.frame(class1) %>%
+  left_join(overlap_per_gt, by = "gt_id") %>%
+  mutate(
+    total_inter_m2 = ifelse(is.na(total_inter_m2), 0, total_inter_m2),
+    coverage_pct   = total_inter_m2 / area_true_m2
+  )
+
+overlap_threshold <- 0.20
+gt_df$matched_gt  <- gt_df$coverage_pct >= overlap_threshold
+match_rate_gt     <- mean(gt_df$matched_gt)
+
+
+# count error
+
+count_error <- N_pred - N_true
+
+
+# crown-area size-class comparison
+
+size_breaks <- quantile(class1$area_true_m2,
+                        probs = c(1/3, 2/3),
+                        names = FALSE)
+
+classify_size <- function(area_m2) {
+  cut(area_m2,
+      breaks = c(-Inf, size_breaks[1], size_breaks[2], Inf),
+      labels = c("Small", "Medium", "Large"),
+      right  = FALSE)
+}
+
+class1$size_class    <- classify_size(class1$area_true_m2)
+pred_poly$size_class <- classify_size(pred_poly$area_pred_m2)
+
+size_levels <- c("Small", "Medium", "Large")
+true_tab    <- table(class1$size_class)[size_levels]
+pred_tab    <- table(pred_poly$size_class)[size_levels]
+
+true_counts <- as.integer(true_tab); true_counts[is.na(true_counts)] <- 0L
+pred_counts <- as.integer(pred_tab); pred_counts[is.na(pred_counts)] <- 0L
+
+size_dist <- tibble(
+  Size_Class     = factor(size_levels, levels = size_levels),
+  N_true         = true_counts,
+  N_pred         = pred_counts,
+  Size_Error     = pred_counts - true_counts,
+  Rel_Size_Error = ifelse(true_counts == 0,
+                          NA_real_,
+                          round((pred_counts - true_counts) / true_counts, 4))
+)
+
+
+# print the results
+
+summary_metrics <- tibble(
+  Metric = c(
+    "N true trees (N_true)",
+    "N predicted blobs (N_pred)",
+    "Tree Counting Error (pred - true)",
+    sprintf("Match rate (GT crowns >=%.0f%% covered)", overlap_threshold * 100)
+  ),
+  Value = c(
+    N_true,
+    N_pred,
+    count_error,
+    round(match_rate_gt, 4)
+  )
+)
+
+cat("\n-- Summary metrics --\n")
+print(summary_metrics)
+
+cat(sprintf("\nMatch rate of GT crowns covered >=%.0f%% by a blob: %.2f%% (%d / %d)\n",
+            overlap_threshold * 100,
+            match_rate_gt * 100,
+            sum(gt_df$matched_gt),
+            nrow(gt_df)))
+
+cat("\n-- Size-class distribution comparison --\n")
+print(size_dist)
+
+cat(sprintf("\nSize-class breaks (m^2): Small < %.1f <= Medium < %.1f <= Large\n",
+            size_breaks[1], size_breaks[2]))
+
+
+# size-class plot
+
+size_plot_df <- tibble(
+  Size_Class = factor(rep(size_levels, 2), levels = size_levels),
+  Source     = factor(rep(c("Ground Truth", "Predicted"), each = 3),
+                      levels = c("Ground Truth", "Predicted")),
+  Count      = c(true_counts, pred_counts)
+)
+
+p_size <- ggplot(size_plot_df,
+                 aes(x = Size_Class, y = Count, fill = Source)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_text(aes(label = Count),
+            position = position_dodge(width = 0.7),
+            vjust    = -0.5,
+            size     = 4) +
+  scale_fill_manual(values = c("Ground Truth" = "#1B5E20",
+                               "Predicted"    = "#1565C0")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Crown-area size class: ground truth vs predicted",
+       x     = "Size class",
+       y     = "Number of crowns") +
+  theme_fancy() +
+  theme(legend.position = "top")
+
+print(p_size)
+
+
+# save outputs
+
+ggsave("krem_crown_size_distribution.png", plot = p_size,
+       width = 7, height = 5, dpi = 300)
+
+write.csv(summary_metrics, "krem_summary_metrics.csv",         row.names = FALSE)
+write.csv(size_dist,       "krem_crown_size_distribution.csv", row.names = FALSE)
+
+
+```
+
+
+Site two
 
 ```{r}
 
 #| echo: false
 #| warning: false
 
-# Read the data
 
-detection_data <- read_csv("C:/Workspace/tree_detection_results.csv", show_col_types = FALSE)
+# helper to count connected objects in a binary raster
 
-# Pull summary values directly from the CSV 
+count_objects <- function(r) {
+  r_clean <- ifel(r == 1, 1, NA)
+  p <- patches(r_clean, directions = 8, zeroAsNA = TRUE)
+  length(unique(values(p, na.rm = TRUE)))
+}
 
-N_true   <- detection_data$N_true[1]
-N_pred   <- detection_data$N_pred[1]
-bias_pct <- detection_data$Bias_pct[1]
 
-# order the histogram
+# load the data
 
-detection_data$Status <- factor(
-  detection_data$Status,
-  levels = c("Correctly Detected Trees", "Trees Detected by Mistake", "Trees the Model Missed")
+polygons <- vect("C:/Users/cp844/OneDrive - University of Exeter/Data/Tree_Crown_Polygons/Site_one_mapungubwe_class_one_tree_polygons.gpkg")
+prediction <- rast("C:/Users/cp844/OneDrive - University of Exeter/Data/Merged/My_Dataset/outputs/maps_site_one_predictionresnet.tif")
+
+
+# tidy up the class 1 (true) crown polygons
+
+class1 <- polygons[polygons$Class == 1, ]
+class1 <- project(class1, crs(prediction))
+class1 <- crop(class1, ext(prediction))
+stopifnot("No Class 1 polygons found after cropping" = nrow(class1) > 0)
+
+N_true <- nrow(class1)
+
+
+# mask out class 2 crowns from the prediction
+
+class2 <- polygons[polygons$Class == 2, ]
+class2 <- project(class2, crs(prediction))
+class2 <- crop(class2, ext(prediction))
+
+if (nrow(class2) > 0) {
+  class2_mask <- rasterize(class2, prediction, field = 1, background = NA)
+  prediction  <- ifel(!is.na(class2_mask), NA, prediction)
+  rm(class2_mask)
+}
+
+
+# crop and threshold the prediction
+
+class1_buffered <- buffer(class1, width = 50)
+prediction_crop <- crop(prediction, ext(class1_buffered))
+
+threshold <- 0.2
+pred_bin  <- prediction_crop > threshold
+
+
+# turn the binary prediction into blob polygons
+
+pred_binary_clean <- ifel(pred_bin == 1, 1, NA)
+pred_patches      <- patches(pred_binary_clean, directions = 8, zeroAsNA = TRUE)
+pred_poly         <- as.polygons(pred_patches, dissolve = TRUE)
+pred_poly$pred_id <- seq_len(nrow(pred_poly))
+
+pred_poly <- makeValid(pred_poly)
+class1    <- makeValid(class1)
+
+N_pred <- nrow(pred_poly)
+
+
+# match rate: how many true crowns are at least 20% covered by a blob
+
+class1$gt_id           <- seq_len(nrow(class1))
+pred_poly$area_pred_m2 <- expanse(pred_poly)
+class1$area_true_m2    <- expanse(class1)
+
+intersection <- terra::intersect(pred_poly, class1)
+stopifnot("No overlap geometries — check projection & extents." =
+            nrow(intersection) > 0)
+intersection$inter_area_m2 <- expanse(intersection)
+inter_df <- as.data.frame(intersection)
+
+overlap_per_gt <- inter_df %>%
+  group_by(gt_id) %>%
+  summarise(total_inter_m2 = sum(inter_area_m2, na.rm = TRUE),
+            .groups        = "drop")
+
+gt_df <- as.data.frame(class1) %>%
+  left_join(overlap_per_gt, by = "gt_id") %>%
+  mutate(
+    total_inter_m2 = ifelse(is.na(total_inter_m2), 0, total_inter_m2),
+    coverage_pct   = total_inter_m2 / area_true_m2
+  )
+
+overlap_threshold <- 0.20
+gt_df$matched_gt  <- gt_df$coverage_pct >= overlap_threshold
+match_rate_gt     <- mean(gt_df$matched_gt)
+
+
+# count error
+
+count_error <- N_pred - N_true
+
+
+# crown-area size-class comparison
+
+size_breaks <- quantile(class1$area_true_m2,
+                        probs = c(1/3, 2/3),
+                        names = FALSE)
+
+classify_size <- function(area_m2) {
+  cut(area_m2,
+      breaks = c(-Inf, size_breaks[1], size_breaks[2], Inf),
+      labels = c("Small", "Medium", "Large"),
+      right  = FALSE)
+}
+
+class1$size_class    <- classify_size(class1$area_true_m2)
+pred_poly$size_class <- classify_size(pred_poly$area_pred_m2)
+
+size_levels <- c("Small", "Medium", "Large")
+true_tab    <- table(class1$size_class)[size_levels]
+pred_tab    <- table(pred_poly$size_class)[size_levels]
+
+true_counts <- as.integer(true_tab); true_counts[is.na(true_counts)] <- 0L
+pred_counts <- as.integer(pred_tab); pred_counts[is.na(pred_counts)] <- 0L
+
+size_dist <- tibble(
+  Size_Class     = factor(size_levels, levels = size_levels),
+  N_true         = true_counts,
+  N_pred         = pred_counts,
+  Size_Error     = pred_counts - true_counts,
+  Rel_Size_Error = ifelse(true_counts == 0,
+                          NA_real_,
+                          round((pred_counts - true_counts) / true_counts, 4))
 )
 
-# plot 
 
-p <- ggplot(detection_data, aes(x = Status, y = Count, fill = Status)) +
-  geom_col(width = 0.5) +
-  geom_text(aes(label = Count), vjust = -0.5, size = 4.5, fontface = "bold") +
-  scale_fill_manual(values = c(
-    "Correctly Detected Trees"  = "forestgreen",
-    "Trees Detected by Mistake" = "red",
-    "Trees the Model Missed"    = "orange"
-  )) +
+# print the results
+
+summary_metrics <- tibble(
+  Metric = c(
+    "N true trees (N_true)",
+    "N predicted blobs (N_pred)",
+    "Tree Counting Error (pred - true)",
+    sprintf("Match rate (GT crowns >=%.0f%% covered)", overlap_threshold * 100)
+  ),
+  Value = c(
+    N_true,
+    N_pred,
+    count_error,
+    round(match_rate_gt, 4)
+  )
+)
+
+cat("\n-- Summary metrics --\n")
+print(summary_metrics)
+
+cat(sprintf("\nMatch rate of GT crowns covered >=%.0f%% by a blob: %.2f%% (%d / %d)\n",
+            overlap_threshold * 100,
+            match_rate_gt * 100,
+            sum(gt_df$matched_gt),
+            nrow(gt_df)))
+
+cat("\n-- Size-class distribution comparison --\n")
+print(size_dist)
+
+cat(sprintf("\nSize-class breaks (m^2): Small < %.1f <= Medium < %.1f <= Large\n",
+            size_breaks[1], size_breaks[2]))
+
+
+# size-class plot
+
+size_plot_df <- tibble(
+  Size_Class = factor(rep(size_levels, 2), levels = size_levels),
+  Source     = factor(rep(c("Ground Truth", "Predicted"), each = 3),
+                      levels = c("Ground Truth", "Predicted")),
+  Count      = c(true_counts, pred_counts)
+)
+
+p_size <- ggplot(size_plot_df,
+                 aes(x = Size_Class, y = Count, fill = Source)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_text(aes(label = Count),
+            position = position_dodge(width = 0.7),
+            vjust    = -0.5,
+            size     = 4) +
+  scale_fill_manual(values = c("Ground Truth" = "#1B5E20",
+                               "Predicted"    = "#1565C0")) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
-  labs(
-    title    = "Object-Level Tree Detection Results",
-    subtitle = paste0("N_true = ", N_true, "  |  N_pred = ", N_pred,
-                      "  |  Count bias = ", bias_pct, "%"),
-    x = "Detection Result",
-    y = "Number of Trees"
-  ) +
+  labs(title = "Crown-area size class: ground truth vs predicted",
+       x     = "Size class",
+       y     = "Number of crowns") +
   theme_fancy() +
-  theme(legend.position = "none")
+  theme(legend.position = "top")
 
-print(p)
+print(p_size)
 
+
+# save outputs
+
+ggsave("maps_crown_size_distribution.png", plot = p_size,
+       width = 7, height = 5, dpi = 300)
+
+write.csv(summary_metrics, "maps_summary_metrics.csv",         row.names = FALSE)
+write.csv(size_dist,       "maps_crown_size_distribution.csv", row.names = FALSE)
 
 ```
+
