@@ -723,7 +723,7 @@ sites_fold_table
 ## **Seasonality**
 
 To assess the influence of seasonality on model performance metrics, we trained
-three models on three datasets collected in dry-season (july), wet-season (february) and a combination of both datasets (dry-wet season) from focal area 1. We only used focal area because, that is where we had data for two seasons.
+three models on three datasets collected in dry-season (july), wet-season (february) and a combination of both datasets (dry + wet season) from focal area 1. We only used focal area because, that is where we had data for two seasons.
 
 ```{r}
 #| fig.cap: "Violin plots showing results of model training and validation performance across seasons"
@@ -945,8 +945,6 @@ In order to meet the needs of ecological resource managers, we will conduct obje
 
 We conducted object-level validation by comparing manually delineated tree crown polygons. We selected two areas from each site that were well observed and excluded areas that we did not visit, as we do not know whether there were false positives. Each connected group of predicted tree pixels was isolated as an individual object. A match between predicted and the manually digitised crowns were determined by the overlap between their polygons. 
 
-To measure count and size errors, we measured the difference between the predicted tree crowns and the manually delineated tree crowns polygons. We computed a match rate of predicted baobab regions that are overlapping manually delineated tree crown polygons by applying a 20 % threshold. We also compared crown area class distributions (small/medium/large).
-
 ```{r}
 
 #| echo: false
@@ -1103,7 +1101,7 @@ summary_metrics <- tibble(
 cat("\n-- Summary metrics --\n")
 print(summary_metrics)
 
-cat(sprintf("\nMatch rate of GT crowns covered >=%.0f%% by a blob: %.2f%% (%d / %d)\n",
+cat(sprintf("\nMatch rate — GT crowns covered >=%.0f%% by some blob: %.2f%% (%d / %d)\n",
             overlap_threshold * 100,
             match_rate_gt * 100,
             sum(gt_df$matched_gt),
@@ -1146,7 +1144,7 @@ print(p_size)
 
 # save outputs
 
-ggsave("krem_crown_size_distribution.png", plot = p_size,
+ggsave("maps_crown_size_distribution.png", plot = p_size,
        width = 7, height = 5, dpi = 300)
 
 write.csv(summary_metrics, "krem_summary_metrics.csv",         row.names = FALSE)
@@ -1155,13 +1153,15 @@ write.csv(size_dist,       "krem_crown_size_distribution.csv", row.names = FALSE
 
 ```
 
+Site
 
-Site two
+
 
 ```{r}
 
 #| echo: false
 #| warning: false
+#| messages: false
 
 
 # helper to count connected objects in a binary raster
@@ -1312,7 +1312,7 @@ summary_metrics <- tibble(
 cat("\n-- Summary metrics --\n")
 print(summary_metrics)
 
-cat(sprintf("\nMatch rate of GT crowns covered >=%.0f%% by a blob: %.2f%% (%d / %d)\n",
+cat(sprintf("\nMatch rate — GT crowns covered >=%.0f%% by blob: %.2f%% (%d / %d)\n",
             overlap_threshold * 100,
             match_rate_gt * 100,
             sum(gt_df$matched_gt),
@@ -1326,6 +1326,25 @@ cat(sprintf("\nSize-class breaks (m^2): Small < %.1f <= Medium < %.1f <= Large\n
 
 
 # size-class plot
+
+theme_fancy <- function() {
+  theme_bw() +
+    theme(
+      text             = element_text(family = "Helvetica"),
+      axis.text        = element_text(size = 10, color = "black"),
+      axis.title       = element_text(size = 10, color = "black"),
+      axis.line.x      = element_line(linewidth = 0.5, color = "black"),
+      axis.line.y      = element_line(linewidth = 0.5, color = "black"),
+      axis.ticks       = element_line(linewidth = 0.4, color = "black"),
+      panel.border     = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.margin      = unit(c(0.5, 0.5, 0.5, 0.5), units = "cm"),
+      plot.title       = element_text(size = 10, hjust = 0.5, color = "black"),
+      legend.text      = element_text(size = 9, color = "black"),
+      legend.title     = element_text(size = 9, color = "black")
+    )
+}
 
 size_plot_df <- tibble(
   Size_Class = factor(rep(size_levels, 2), levels = size_levels),
@@ -1363,3 +1382,1345 @@ write.csv(size_dist,       "maps_crown_size_distribution.csv", row.names = FALSE
 
 ```
 
+#**Results**
+
+Create an evaluation layer from the site
+
+
+```{r}
+
+
+#| echo: false
+#| warning: false
+#| messages: false
+
+library(terra)
+library(sf)
+
+# clip an area of interest from kremetart
+
+Mapungubwe <- st_read("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Kremetart_Evaluation_Site.gpkg")
+
+# area of interest (AOI) for evaluation
+
+#total_area <- Mapungubwe |>
+#  st_transform(32735) |>
+#  st_area() |>
+#  sum()
+
+#total_area
+
+# Remove any empty or invalid geometries
+
+aoi <- st_make_valid(Mapungubwe)
+
+
+# load raster
+
+kremetart_feb <- rast("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Predicted_Maps/kremetart_baobab_july_8.1m_binary.tif")
+
+crs(kremetart_feb)
+
+# reproject to the ratsre crs
+
+aoi_utm <- st_transform(aoi, crs(kremetart_feb))
+
+# convert sf → terra vector
+
+aoi_vect <- vect(aoi_utm)
+
+# crop raster
+kremetart_crop <- crop(kremetart_feb, aoi_vect)
+
+# mask to exact polygon
+
+kremetart_clip <- mask(kremetart_crop, aoi_vect)
+
+# Remove surrounding NA cells
+
+aoi_trimmed <- trim(kremetart_clip)
+
+plot(aoi_trimmed)
+
+# check the values in the raster file
+
+unique(values(aoi_trimmed))
+
+# save raster
+
+writeRaster(aoi_trimmed,
+            "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Predicted_Maps/Evaluation_Site_Maps/kremetart_baobab_map_july_8.1m_binary.tif",
+            overwrite = TRUE)
+
+
+```
+
+
+evaluation files
+
+```{r}
+
+#| echo: false
+#| warning: false
+#| messages: false
+
+library(terra)
+
+# Load the input data-----------------------------------------------------------
+
+reference <- terra::vect("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/july_kremetart_evaluation_class_one_tree_polygons.gpkg")
+
+#reference <- terra::vect("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Kremetart_evaluation_class_one_tree_polygons.gpkg")
+
+binary_rast <- terra::rast("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Predicted_Maps/Evaluation_Site_Maps/kremetart_baobab_map_july_2.7m_binary.tif")
+fg          <- terra::ifel(binary_rast == 1, 1, NA)
+predicted   <- terra::as.polygons(fg, dissolve = TRUE, values = FALSE)
+predicted   <- terra::disagg(predicted)
+
+if (!identical(terra::crs(reference), terra::crs(predicted))) {
+  cat("CRS mismatch — reprojecting reference to match predictions\n")
+  reference <- terra::project(reference, terra::crs(predicted))
+}
+
+predicted$pred_id <- seq_len(nrow(predicted))
+reference$ref_id  <- seq_len(nrow(reference))
+predicted$area_m2 <- terra::expanse(predicted, unit = "m")
+reference$area_m2 <- terra::expanse(reference, unit = "m")
+
+cat(sprintf("Predicted polygons: %d\n", nrow(predicted)))
+cat(sprintf("Reference polygons: %d\n", nrow(reference)))
+
+# OBJECT-LEVEL EVALUATION-------------------------------------------------------
+
+# Rule: a reference tree is detected if intersects or overlaps a prediction blob
+
+evaluate_detection <- function(predicted, reference) {
+  
+  pred_n <- nrow(predicted)
+  ref_n  <- nrow(reference)
+  
+  M <- terra::relate(predicted, reference, "intersects")
+  
+  pred_hits_ref <- apply(M, 1, any)
+  ref_is_hit    <- apply(M, 2, any)
+  
+  tp <- sum(ref_is_hit)
+  fn <- sum(!ref_is_hit)
+  fp <- sum(!pred_hits_ref)
+  
+  precision <- tp / (tp + fp)
+  recall    <- tp / (tp + fn)
+  f1        <- 2 * precision * recall / (precision + recall)
+  
+  count_err <- (pred_n - ref_n) / ref_n
+  
+  list(
+    pred_count    = pred_n,
+    ref_count     = ref_n,
+    tp            = tp,
+    fp            = fp,
+    fn            = fn,
+    precision     = precision,
+    recall        = recall,
+    f1            = f1,
+    count_error   = count_err,
+    pred_hits_ref = pred_hits_ref,
+    ref_is_hit    = ref_is_hit
+  )
+}
+
+results <- evaluate_detection(predicted, reference)
+
+# print the results-------------------------------------------------------------
+
+cat("\n========================================\n")
+cat("OBJECT-LEVEL DETECTION EVALUATION\n")
+cat("(a tree counts once, regardless of how many\n")
+cat(" predictions land on it)\n")
+cat("========================================\n")
+cat(sprintf("Reference baobabs:   %d\n", results$ref_count))
+cat(sprintf("Predicted polygons:  %d\n", results$pred_count))
+cat(sprintf("\n"))
+cat(sprintf("TP (trees detected): %d\n", results$tp))
+cat(sprintf("FN (trees missed):   %d\n", results$fn))
+cat(sprintf("FP (spurious preds): %d\n", results$fp))
+cat(sprintf("\n"))
+cat(sprintf("Precision: %.3f\n", results$precision))
+cat(sprintf("Recall:    %.3f\n", results$recall))
+cat(sprintf("F1:        %.3f\n", results$f1))
+cat(sprintf("Count err: %+.1f%%\n", 100 * results$count_error))
+
+
+# Save the polygons for ispection
+
+predicted$status <- ifelse(results$pred_hits_ref, "TP", "FP")
+reference$status <- ifelse(results$ref_is_hit,    "TP", "FN")
+
+terra::writeVector(predicted,
+                   "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/july_kremetart_predictions_polygons_evaluated_site_2.7m.gpkg",
+                   overwrite = TRUE)
+terra::writeVector(reference,
+                   "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/july_kremetart_reference_polygons_2.7m.gpkg",
+                   overwrite = TRUE)
+
+
+
+```
+
+
+save csv files for the metrics
+
+```{r}
+
+#| echo: false
+#| warning: false
+#| messages: false
+
+# Save results as csv files----------------------------------------------------
+
+
+site_name <- "kremetart_evaluation_july_2.7m"
+
+summary_df <- data.frame(
+  site             = site_name,
+  evaluation_date  = Sys.Date(),
+  ref_count        = results$ref_count,
+  pred_count       = results$pred_count,
+  tp               = results$tp,
+  fp               = results$fp,
+  fn               = results$fn,
+  precision        = results$precision,
+  recall           = results$recall,
+  f1               = results$f1,
+  count_error_pct  = 100 * results$count_error
+)
+
+write.csv(
+  summary_df,
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_2.7m.csv",
+  row.names = FALSE
+)
+
+predictions_df <- data.frame(
+  site    = site_name,
+  pred_id = predicted$pred_id,
+  area_m2 = predicted$area_m2,
+  status  = ifelse(results$pred_hits_ref, "TP", "FP")
+)
+
+reference_df <- data.frame(
+  site    = site_name,
+  ref_id  = reference$ref_id,
+  area_m2 = reference$area_m2,
+  status  = ifelse(results$ref_is_hit, "TP", "FN")
+)
+
+write.csv(
+  predictions_df,
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/july_kremetart_predictions_polygon_areas_2.7m.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  reference_df,
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/july_kremetart_reference_polygon_areas_2.7m.csv",
+  row.names = FALSE
+)
+
+cat("\nCSVs saved:\n")
+cat("  - evaluation_summary.csv      (one row per site, for bar/line charts)\n")
+cat("  - predictions_per_polygon.csv (one row per pred,  for distributions)\n")
+cat("  - reference_per_polygon.csv   (one row per ref,   for distributions)\n")
+
+```
+
+
+```{r}
+
+
+
+
+```
+
+
+
+plots
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+files <- c(
+  "Single (dry)"             = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_0.3m.csv",
+  "Single (wet)" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/feb_kremetart_evaluation_metrics_summary_0.3m.csv",
+  "Multi-season (wet + dry)"             = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/feb_july_kremetart_evaluation_metrics_summary_0.3m.csv"
+)
+
+results <- do.call(rbind, lapply(seq_along(files), function(i) {
+  df <- read.csv(files[i], stringsAsFactors = FALSE)
+  df$seasonality <- names(files)[i]
+  df
+}))
+
+plot_data <- results %>%
+  select(seasonality, precision, recall, f1) %>%
+  pivot_longer(
+    cols      = c(precision, recall, f1),
+    names_to  = "metric",
+    values_to = "score"
+  ) %>%
+  mutate(
+    seasonality = factor(seasonality, levels = names(files)),
+    metric      = factor(metric,
+                         levels = c("precision", "recall", "f1"),
+                         labels = c("Precision", "Recall", "F1"))
+  )
+
+p <- ggplot(plot_data, aes(x = seasonality, y = score,
+                           colour = metric, group = metric,
+                           shape = metric)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 3) +
+
+  scale_colour_manual(values = c(
+    "Precision" = "#1f77b4",
+    "Recall"    = "#d62728",
+    "F1"        = "#2ca02c"
+  )) +
+
+  scale_shape_manual(values = c(
+    "Precision" = 20,  # triangle
+    "Recall"    = 20,  # circle (point)
+    "F1"        = 20   # diamond
+  )) +
+
+  scale_y_continuous(
+    labels = function(x) x * 100,
+    breaks = seq(0, 1, by = 0.1),
+    limits = c(0, 1)
+  ) +
+
+  labs(x = "Seasonality", y = "Performance Score (%)", colour = "Metric", shape = "Metric") +
+
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "right",
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(size = 10)
+  ) +
+  theme_fancy()
+
+print(p)
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/seasonality_comparison.png",
+       plot = p, width = 10, height = 6, dpi = 600, bg = "white")
+
+```
+
+spatial grain influence
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+files <- c(
+  "0.3" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_mapungubwe_evaluation_metrics_summary_0.3m.csv",
+  "0.9" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_mapungubwe_evaluation_metrics_summary_0.9m.csv",
+  "2.7" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_mapungubwe_evaluation_metrics_summary_2.7m.csv",
+  "8.1" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_mapungubwe_evaluation_metrics_summary_8.1m.csv"
+)
+
+
+results_list <- lapply(seq_along(files), function(i) {
+  df <- read.csv(files[i], stringsAsFactors = FALSE)
+  df$grain <- as.numeric(names(files)[i])
+  df
+})
+
+results <- do.call(rbind, results_list)
+
+plot_data <- results %>%
+  select(grain, precision, recall, f1) %>%
+  pivot_longer(
+    cols = c(precision, recall, f1),
+    names_to = "metric",
+    values_to = "score"
+  ) %>%
+  mutate(
+    metric = factor(metric,
+                    levels = c("precision", "recall", "f1"),
+                    labels = c("Precision", "Recall", "F1"))
+  )
+
+p <- ggplot(plot_data, aes(x = grain, y = score,
+                           colour = metric,
+                           group = metric,
+                           shape = metric)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  scale_colour_manual(values = c(
+    "Precision" = "#1f77b4",
+    "Recall"    = "#d62728",
+    "F1"        = "#2ca02c"
+  )) +
+  scale_shape_manual(values = c(
+    "Precision" = 20,
+    "Recall"    = 20,
+    "F1"        = 20
+  )) +
+  scale_x_log10(                                    # <-- changed from scale_x_continuous to scale_x_log10
+    breaks = c(0.3, 0.9, 2.7, 8.1),                 # explicit breaks at your actual resolution values, otherwise log10 picks 1, 10, 100... which won't match your data
+    labels = c("0.3", "0.9", "2.7", "8.1"),         # matching labels for those breaks
+    minor_breaks = NULL                              # suppresses faint minor gridlines that log10 adds by default; keeps the axis visually clean
+  ) +
+  scale_y_continuous(
+    labels = function(x) x * 100,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  labs(
+    x = "Image resolution (m)",          # add "log scale" to the axis label so readers know spacing is non-linear
+    y = "Performance score (%)",
+    colour = "Metric",
+    shape = "Metric"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    #legend.position = "right",
+    panel.grid.minor = element_blank()
+  ) +
+  theme_fancy()
+
+print(p)
+
+# save
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/mapungubwe_spatial_grain_comparison.png",
+       plot = p, width = 10, height = 6, dpi = 600, bg = "white")
+
+```
+
+kremetart spatial grain plots
+
+```{r}
+
+files <- c(
+  "0.3" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_0.3m.csv",
+  "0.9" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_0.9m.csv",
+  "2.7" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_2.7m.csv",
+  "8.1" = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/july_kremetart_evaluation_metrics_summary_8.1m.csv"
+)
+
+
+results_list <- lapply(seq_along(files), function(i) {
+  df <- read.csv(files[i], stringsAsFactors = FALSE)
+  df$grain <- as.numeric(names(files)[i])
+  df
+})
+
+results <- do.call(rbind, results_list)
+
+plot_data <- results %>%
+  select(grain, precision, recall, f1) %>%
+  pivot_longer(
+    cols = c(precision, recall, f1),
+    names_to = "metric",
+    values_to = "score"
+  ) %>%
+  mutate(
+    metric = factor(metric,
+                    levels = c("precision", "recall", "f1"),
+                    labels = c("Precision", "Recall", "F1"))
+  )
+
+p2 <- ggplot(plot_data, aes(x = grain, y = score,
+                           colour = metric,
+                           group = metric,
+                           shape = metric)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  scale_colour_manual(values = c(
+    "Precision" = "#1f77b4",
+    "Recall"    = "#d62728",
+    "F1"        = "#2ca02c"
+  )) +
+  scale_shape_manual(values = c(
+    "Precision" = 20,
+    "Recall"    = 20,
+    "F1"        = 20
+  )) +
+  scale_x_log10(                                    # <-- changed from scale_x_continuous to scale_x_log10
+    breaks = c(0.3, 0.9, 2.7, 8.1),                 # explicit breaks at your actual resolution values, otherwise log10 picks 1, 10, 100... which won't match your data
+    labels = c("0.3", "0.9", "2.7", "8.1"),         # matching labels for those breaks
+    minor_breaks = NULL                              # suppresses faint minor gridlines that log10 adds by default; keeps the axis visually clean
+  ) +
+  scale_y_continuous(
+    labels = function(x) x * 100,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  labs(
+    x = "Image resolution (m)",          # add "log scale" to the axis label so readers know spacing is non-linear
+    y = "Performance score (%)",
+    colour = "Metric",
+    shape = "Metric"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    #legend.position = "right",
+    panel.grid.minor = element_blank()
+  ) +
+  theme_fancy()
+
+print(p2)
+
+# save
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/kremetart_spatial_grain_comparison.png",
+       plot = p, width = 10, height = 6, dpi = 600, bg = "white")
+
+```
+
+
+
+combine two plots
+
+```{r}
+
+combined <- p + p2 +
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")"
+  ) +
+  plot_layout(guides = "collect") &              
+  theme(legend.position = "right",               
+        plot.tag = element_text(size = 12, face = "plain")) 
+
+combined
+
+# save
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/combined_spatial_grain_comparison.png",
+       plot = combined, width = 10, height = 6, dpi = 600, bg = "white")
+
+```
+
+
+plot a descriptive table
+
+```{r}
+
+library(dplyr)         
+library(tidyr)        
+library(ggplot2)       
+library(patchwork)     
+library(gt)            
+library(gridExtra)
+
+# Load all CSVs into a single combined data frame 
+
+
+csv_files <- list.files(
+  path = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/",       
+  pattern = "\\.csv$",                          
+  full.names = TRUE                             
+)
+
+combined <- lapply(csv_files, function(f) {
+  df <- read.csv(f, check.names = FALSE)
+  df$source <- tools::file_path_sans_ext(basename(f))
+  df
+}) |> bind_rows()
+
+# Parse metadata from filename
+
+combined <- combined |>
+  mutate(
+    season     = case_when(
+      grepl("feb_july", source) ~ "Combined",
+      grepl("^feb",     source) ~ "February",
+      grepl("^july",    source) ~ "July"
+    ),
+    site       = case_when(
+      grepl("kremetart",  source) ~ "Kremetart",
+      grepl("mapungubwe", source) ~ "Mapungubwe"
+    ),
+    resolution = as.numeric(sub(".*_([0-9.]+)m$", "\\1", source))
+  )
+
+print(combined)
+
+# Reshape to long format for plotting
+
+metric_cols <- c("precision", "recall", "f1")   
+
+long <- combined |>
+  select(site, season, resolution, all_of(metric_cols)) |>
+  pivot_longer(cols = all_of(metric_cols),
+               names_to = "metric",
+               values_to = "score")
+
+# Summary table for display
+
+summary_tbl <- combined |>
+  select(site, season, resolution, all_of(metric_cols)) |>
+  mutate(across(all_of(metric_cols), \(x) round(x, 3))) |>
+  arrange(site, season, resolution)
+
+print(summary_tbl)
+
+# 5. Plot
+main_plot <- ggplot(long, aes(x = resolution, y = score,
+                              colour = metric, group = metric)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  facet_grid(season ~ site) +
+  scale_x_log10(breaks = c(0.3, 0.9, 2.7, 8.1)) +
+  scale_y_continuous(limits = c(0, 1), labels = function(x) x * 100) +
+  scale_colour_manual(values = c(precision = "#1f77b4",
+                                 recall    = "#d62728",
+                                 f1        = "#2ca02c")) +
+  labs(x = "Image resolution (m)", y = "Performance score (%)",
+       colour = "Metric") +
+  theme_minimal(base_size = 11)
+
+# Combine table + plot
+
+table_grob <- tableGrob(
+  summary_tbl,
+  rows = NULL,
+  theme = ttheme_minimal(
+    core    = list(fg_params = list(fontsize = 9)),
+    colhead = list(fg_params = list(fontsize = 10))
+  )
+)
+
+final <- wrap_elements(table_grob) / main_plot +
+  plot_layout(heights = c(1, 2))
+
+print(final)
+
+# save a table
+
+summary_tbl <- combined |>
+  select(
+    Site                 = site,
+    Season               = season,
+    Resolution           = resolution,
+    `Reference trees`    = ref_count,
+    `Predicted polygons` = pred_count,
+    TP                   = tp,
+    FP                   = fp,
+    FN                   = fn,
+    Precision            = precision,
+    Recall               = recall,
+    F1                   = f1
+  ) |>
+  mutate(across(c(Precision, Recall, F1), \(x) round(x, 3))) |>
+  arrange(Site, Season, Resolution)
+
+print(summary_tbl)
+
+
+write.csv(summary_tbl, "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/summary_tbl.csv", row.names = FALSE)
+
+#ggsave("combined_summary_plot.png", final, width = 8, height = 7, dpi = 300)
+
+
+```
+
+
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+
+# Load all CSVs into a single combined data frame
+ 
+
+csv_files <- list.files(path = 
+                          "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/maps_july",
+                        pattern = "\\.csv$",
+                        full.names = TRUE)
+ 
+combined <- lapply(csv_files, function(f) {
+  df <- read.csv(f, check.names = FALSE)
+  df$source <- tools::file_path_sans_ext(basename(f))
+  df
+}) |> bind_rows()
+ 
+#combined
+
+#colnames(combined)
+
+combined |>
+  mutate(
+    type = case_when(
+      str_detect(source, "predictions") ~ "pred",
+      str_detect(source, "reference")   ~ "ref"
+    )
+  ) |>
+  count(type, status) |>
+  print()
+
+# Parse the `source` filename into structured columns 
+
+combined <- combined |>
+  mutate(
+    source = str_replace(source, "_03m$", "_0.3m"),
+
+    resolution = str_extract(source, "[0-9]+\\.?[0-9]*m$"),
+
+    # Predictions vs reference rows
+    
+    type = case_when(
+      str_detect(source, "predictions") ~ "pred",
+      str_detect(source, "reference")   ~ "ref",
+      TRUE                              ~ NA_character_
+    ),
+
+    # Study site
+    
+    site_name = case_when(
+      str_detect(source, "kremetart")  ~ "kremetart",
+      str_detect(source, "mapungubwe") ~ "mapungubwe"
+    ),
+
+    # Acquisition date (composite "feb_july" must be matched first
+    
+    date_prefix = str_extract(source, "^(feb_july|feb|july)")
+  )
+
+# Sanity
+
+combined |>
+  distinct(source, site_name, date_prefix, resolution, type) |>
+  print(n = Inf)
+
+# checks
+
+global_breaks <- quantile(
+  combined$area_m2,
+  probs = c(0, 1/3, 2/3, 1),
+  na.rm = TRUE
+)
+
+cat("\n=== Global size-class breakpoints (m^2) ===\n")
+print(round(global_breaks, 2))
+
+to_diameter <- function(a) 2 * sqrt(a / pi)
+cat("\n=== Same breaks as crown diameters (m) ===\n")
+print(round(to_diameter(global_breaks), 2))
+
+# dataset breakpoints
+
+per_source_breaks <- combined |>
+  group_by(site_name, date_prefix, resolution, type) |>
+  summarise(
+    n   = dplyr::n(),
+    Min = min(area_m2,        na.rm = TRUE),
+    P33 = quantile(area_m2, 1/3, na.rm = TRUE),
+    P67 = quantile(area_m2, 2/3, na.rm = TRUE),
+    Max = max(area_m2,        na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cat("\n=== Per-dataset size-class breakpoints (m^2) ===\n")
+print(per_source_breaks, n = Inf, width = Inf)
+
+# Assign each row to a global size class
+
+size_labels <- c(
+  sprintf("Small (%.1f–%.1f m²)",  global_breaks[1], global_breaks[2]),
+  sprintf("Medium (%.1f–%.1f m²)", global_breaks[2], global_breaks[3]),
+  sprintf("Large (%.1f–%.1f m²)",  global_breaks[3], global_breaks[4])
+)
+
+combined <- combined |>
+  mutate(
+    size_bin = cut(
+      area_m2,
+      breaks         = global_breaks,
+      labels         = size_labels,
+      include.lowest = TRUE,
+      right          = TRUE
+    )
+  )
+
+# Count TP / FP / FN from `status` and recompute F1 
+
+f1_grid <- combined |>
+  filter(!is.na(size_bin), !is.na(resolution)) |>
+  group_by(resolution, size_bin) |>
+  summarise(
+    TP = sum(type == "pred" & status == "TP", na.rm = TRUE),
+    FP = sum(type == "pred" & status == "FP", na.rm = TRUE),
+    FN = sum(type == "ref"  & status == "FN", na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    denom = 2 * TP + FP + FN,
+    f1    = ifelse(denom > 0, 2 * TP / denom, NA_real_)
+  )
+
+# Order axes 
+
+f1_grid$size_bin <- factor(f1_grid$size_bin, levels = rev(size_labels))
+
+
+f1_grid <- f1_grid |>
+  mutate(
+    res_num    = as.numeric(str_replace(resolution, "m$", "")),
+    resolution = factor(resolution, levels = unique(resolution[order(res_num)]))
+  )
+
+# Plot 
+
+pmp <- ggplot(f1_grid, aes(x = resolution, y = size_bin, fill = f1)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = sprintf("%.2f", f1)), size = 4.5, color = "black") +
+  scale_fill_gradientn(
+    colours = c("#fbe5d6", "#f5c790", "#f3e08a", "#9ed3a8", "#3aa17e"),
+    limits  = c(0, 1),
+    breaks  = seq(0, 1, 0.2),
+    name    = "F1 score"
+  ) +
+  labs(
+    #title = "maps_july_F1 by resolution × crown size",
+    x     = "Spatial resolution",
+    y     = "Crown size class"
+  ) +
+  coord_equal() +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid      = element_blank(),
+    axis.text.x      = element_text(size = 10)#,
+    #plot.title      = element_text(hjust = 0.5, face = "bold"),
+    #legend.position = "right"
+  )
+
+print(pmp)
+
+# Save if you like:
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/maps_july_heatmap.png", pmp, width = 10, height = 6, dpi = 600, bg = "white")
+
+################################################################################
+
+# Count TP / FN from the reference side and compute recall 
+
+recall_grid <- combined |>
+  filter(!is.na(size_bin), !is.na(resolution), type == "ref") |>
+  group_by(resolution, size_bin) |>
+  summarise(
+    TP     = sum(status == "TP", na.rm = TRUE),
+    FN     = sum(status == "FN", na.rm = TRUE),
+    n_ref  = TP + FN,                                     # for the audit below
+    recall = ifelse(n_ref > 0, TP / n_ref, NA_real_),
+    .groups = "drop"
+  )
+
+# Sanity check
+
+print(recall_grid, n = Inf)
+
+# Order the axes 
+
+recall_grid$size_bin <- factor(recall_grid$size_bin, levels = size_labels)
+
+# Resolution legend
+
+recall_grid <- recall_grid |>
+  mutate(
+    res_num    = as.numeric(str_replace(resolution, "m$", "")),
+    resolution = factor(resolution, levels = unique(resolution[order(res_num)]))
+  )
+
+# Sequential blue palette 
+
+res_levels <- levels(recall_grid$resolution)
+blue_palette <- setNames(
+  c("#cfe2f3", "#5b9bd5", "#1f4e79", "#0b1f3a")[seq_along(res_levels)],
+  res_levels
+)
+
+# Bar chart 
+
+maps_recall <- ggplot(recall_grid,
+            aes(x = size_bin, y = recall, fill = resolution)) +
+  geom_col(
+    position = position_dodge(width = 0.8),  
+    width    = 0.75                           
+  ) +
+  scale_fill_manual(values = blue_palette, name = "Resolution") +
+  scale_y_continuous(
+    limits = c(0, 1),                         
+    breaks = seq(0, 1, 0.2),
+    expand = expansion(mult = c(0, 0.02))     
+  ) +
+  labs(
+    #title = "Recall by crown size at each resolution",
+    x     = "Crown size class",
+    y     = "Recall (detection rate)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),     
+    panel.grid.minor   = element_blank(),
+    axis.text.x      = element_text(size = 10)
+    #plot.title         = element_text(face = "bold"),
+    #legend.position    = "bottom",
+    #legend.title       = element_text(face = "bold")
+  ) +
+  theme_fancy()
+
+print(maps_recall)
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/maps_july_recall_by_crown_size.png", maps_recall, width = 10, height = 6, dpi = 600, bg = "white")
+
+
+```
+
+
+
+bar charts
+
+```{r}
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+
+# Load all CSVs into a single combined data frame ---------------------
+ 
+
+csv_files <- list.files(path = 
+                          "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/kremetart_july",
+                        pattern = "\\.csv$",
+                        full.names = TRUE)
+ 
+combined <- lapply(csv_files, function(f) {
+  df <- read.csv(f, check.names = FALSE)
+  df$source <- tools::file_path_sans_ext(basename(f))
+  df
+}) |> bind_rows()
+ 
+#combined
+ 
+ 
+#colnames(combined)
+
+combined |>
+  mutate(
+    type = case_when(
+      str_detect(source, "predictions") ~ "pred",
+      str_detect(source, "reference")   ~ "ref"
+    )
+  ) |>
+  count(type, status) |>
+  print()
+
+# Parse the `source` filename into structured columns
+
+combined <- combined |>
+  mutate(
+    source = str_replace(source, "_03m$", "_0.3m"),
+
+    # Resolution: trailing number + "m", e.g. "0.3m", "8.1m"
+    resolution = str_extract(source, "[0-9]+\\.?[0-9]*m$"),
+
+    # Predictions vs reference rows
+    type = case_when(
+      str_detect(source, "predictions") ~ "pred",
+      str_detect(source, "reference")   ~ "ref",
+      TRUE                              ~ NA_character_
+    ),
+
+    # Study site
+    site_name = case_when(
+      str_detect(source, "kremetart")  ~ "kremetart",
+      str_detect(source, "mapungubwe") ~ "mapungubwe"
+    ),
+
+    # Acquisition date (composite "feb_july" must be matched first
+    # so the regex doesn't stop at "feb")
+    date_prefix = str_extract(source, "^(feb_july|feb|july)")
+  )
+
+# Sanity
+
+combined |>
+  distinct(source, site_name, date_prefix, resolution, type) |>
+  print(n = Inf)
+
+# GLOBAL tercile breakpoints on area_m2 
+
+global_breaks <- quantile(
+  combined$area_m2,
+  probs = c(0, 1/3, 2/3, 1),
+  na.rm = TRUE
+)
+
+cat("\n=== Global size-class breakpoints (m^2) ===\n")
+print(round(global_breaks, 2))
+
+to_diameter <- function(a) 2 * sqrt(a / pi)
+cat("\n=== Same breaks as crown diameters (m) ===\n")
+print(round(to_diameter(global_breaks), 2))
+
+# PER-DATASET breakpoints (diagnostic) 
+
+per_source_breaks <- combined |>
+  group_by(site_name, date_prefix, resolution, type) |>
+  summarise(
+    n   = dplyr::n(),
+    Min = min(area_m2,        na.rm = TRUE),
+    P33 = quantile(area_m2, 1/3, na.rm = TRUE),
+    P67 = quantile(area_m2, 2/3, na.rm = TRUE),
+    Max = max(area_m2,        na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cat("\n=== Per-dataset size-class breakpoints (m^2) ===\n")
+print(per_source_breaks, n = Inf, width = Inf)
+
+# --- 4. Assign each row to a global size class ---------------
+size_labels <- c(
+  sprintf("Small (%.1f–%.1f m²)",  global_breaks[1], global_breaks[2]),
+  sprintf("Medium (%.1f–%.1f m²)", global_breaks[2], global_breaks[3]),
+  sprintf("Large (%.1f–%.1f m²)",  global_breaks[3], global_breaks[4])
+)
+
+combined <- combined |>
+  mutate(
+    size_bin = cut(
+      area_m2,
+      breaks         = global_breaks,
+      labels         = size_labels,
+      include.lowest = TRUE,
+      right          = TRUE
+    )
+  )
+
+# Count TP / FP / FN from `status` and recompute F1
+
+f1_grid <- combined |>
+  filter(!is.na(size_bin), !is.na(resolution)) |>
+  group_by(resolution, size_bin) |>
+  summarise(
+    TP = sum(type == "pred" & status == "TP", na.rm = TRUE),
+    FP = sum(type == "pred" & status == "FP", na.rm = TRUE),
+    FN = sum(type == "ref"  & status == "FN", na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    denom = 2 * TP + FP + FN,
+    f1    = ifelse(denom > 0, 2 * TP / denom, NA_real_)
+  )
+
+# Order axes
+
+f1_grid$size_bin <- factor(f1_grid$size_bin, levels = rev(size_labels))
+
+f1_grid <- f1_grid |>
+  mutate(
+    res_num    = as.numeric(str_replace(resolution, "m$", "")),
+    resolution = factor(resolution, levels = unique(resolution[order(res_num)]))
+  )
+
+# Plot 
+
+pkr <- ggplot(f1_grid, aes(x = resolution, y = size_bin, fill = f1)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = sprintf("%.2f", f1)), size = 4.5, color = "black") +
+  scale_fill_gradientn(
+    colours = c("#fbe5d6", "#f5c790", "#f3e08a", "#9ed3a8", "#3aa17e"),
+    limits  = c(0, 1),
+    breaks  = seq(0, 1, 0.2),
+    name    = "F1 score"
+  ) +
+  labs(
+    #title = "kremetart_july_F1 by resolution × crown size",
+    x     = "Spatial resolution",
+    y     = "Crown size class"
+  ) +
+  coord_equal() +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid      = element_blank(),
+    axis.text.x      = element_text(size = 10)
+    #plot.title      = element_text(hjust = 0.5, face = "bold"),
+    #legend.position = "right"
+  )
+
+print(pkr)
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/kremetart_july_heatmap.png", pkr, width = 10, height = 6, dpi = 600, bg = "white")
+
+################################################################################
+
+# Count TP / FN from the reference side and compute recall 
+
+
+recall_grid <- combined |>
+  filter(!is.na(size_bin), !is.na(resolution), type == "ref") |>
+  group_by(resolution, size_bin) |>
+  summarise(
+    TP     = sum(status == "TP", na.rm = TRUE),
+    FN     = sum(status == "FN", na.rm = TRUE),
+    n_ref  = TP + FN,                                     
+    recall = ifelse(n_ref > 0, TP / n_ref, NA_real_),
+    .groups = "drop"
+  )
+
+# Sanity check
+
+print(recall_grid, n = Inf)
+
+# Order the axes 
+
+recall_grid$size_bin <- factor(recall_grid$size_bin, levels = size_labels)
+
+# Resolution legend
+
+recall_grid <- recall_grid |>
+  mutate(
+    res_num    = as.numeric(str_replace(resolution, "m$", "")),
+    resolution = factor(resolution, levels = unique(resolution[order(res_num)]))
+  )
+
+# Sequential blue palette 
+
+res_levels <- levels(recall_grid$resolution)
+blue_palette <- setNames(
+  c("#cfe2f3", "#5b9bd5", "#1f4e79", "#0b1f3a")[seq_along(res_levels)],
+  res_levels
+)
+
+# Bar chart 
+
+km <- ggplot(recall_grid,
+            aes(x = size_bin, y = recall, fill = resolution)) +
+  geom_col(
+    position = position_dodge(width = 0.8),   
+    width    = 0.75                           
+  ) +
+  scale_fill_manual(values = blue_palette, name = "Resolution") +
+  scale_y_continuous(
+    limits = c(0, 1),                        
+    breaks = seq(0, 1, 0.2),
+    expand = expansion(mult = c(0, 0.02))     
+  ) +
+  labs(
+    #title = "Recall by crown size at each resolution",
+    x     = "Crown size class",
+    y     = "Recall (detection rate)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),     
+    panel.grid.minor   = element_blank(),
+    axis.text.x      = element_text(size = 10)#,
+    #plot.title         = element_text(face = "bold"),
+    #legend.position    = "bottom",
+    #legend.title       = element_text(face = "bold")
+  ) +
+  theme_fancy()
+
+print(km)
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/kremetart_july_recall_by_crown_size.png", km, width = 10, height = 6, dpi = 600, bg = "white")
+
+# save combined heatmap
+
+combined_heatmap <- pmp + pkr +
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")"
+  ) +
+  plot_layout(guides = "collect") &              
+  theme(legend.position = "right",               
+        plot.tag = element_text(size = 12, face = "plain")) 
+
+combined_heatmap
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/combined_july_heatmap.png", combined_heatmap, width = 10, height = 6, dpi = 600, bg = "white")
+
+# save combined recall 
+
+combined_recall <- maps_recall + km +
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")"
+  ) +
+  plot_layout(guides = "collect") &              
+  theme(legend.position = "right",               
+        plot.tag = element_text(size = 12, face = "plain")) 
+
+combined_recall 
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/combined_july_recall.png", combined_recall, width = 14, height = 8, dpi = 600, bg = "white")
+
+```
+
+
+
+Crown sizes influence
+
+```{r}
+
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+predicion_df <- read_csv("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/july_kremetart_predictions_polygon_areas.csv")
+
+reference_df <- read_csv("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/july_kremetart_reference_polygon_areas.csv")
+
+prediction_df <- predicion_df%>%
+  mutate(
+    size_class = ntile(area_m2, 3),
+    size_class = factor(size_class,
+                        levels = c(1, 2, 3),
+                        labels = c("Small", "Medium", "Large"))
+  )
+
+reference_df <- reference_df %>%
+  mutate(
+    size_class = ntile(area_m2, 3),
+    size_class = factor(size_class,
+                        levels = c(1, 2, 3),
+                        labels = c("Small", "Medium", "Large"))
+  )
+
+pred_counts <- prediction_df %>%
+  group_by(size_class) %>%
+  summarise(
+    TP = sum(status == "TP"),
+    FP = sum(status == "FP"),
+    .groups = "drop"
+  )
+
+#colnames(pred_counts)
+
+
+ref_counts <- reference_df %>%
+  group_by(size_class) %>%
+  summarise(
+    FN = sum(status == "FN"),
+    .groups = "drop"
+  )
+
+metrics_by_class <- pred_counts %>%
+  left_join(ref_counts, by = "size_class") %>%
+  mutate(
+    FN = replace_na(FN, 0),
+    precision = ifelse((TP + FP) == 0, 0, TP / (TP + FP)),
+    recall    = ifelse((TP + FN) == 0, 0, TP / (TP + FN)),
+    f1        = ifelse((precision + recall) == 0, 0,
+                       2 * (precision * recall) / (precision + recall))
+  )
+
+#write_csv(metrics_by_class, "metrics_by_size_class.csv")
+
+print(metrics_by_class)
+
+# Save to CSV
+
+write_csv(metrics_by_class, "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/july_metrics_kremetart_predictions_polygon_areas_2.7m.csv")
+
+plot_data <- metrics_by_class %>%
+  select(size_class, precision, recall, f1) %>%
+  pivot_longer(
+    cols = c(precision, recall, f1),
+    names_to = "metric",
+    values_to = "score"
+  ) %>%
+  mutate(
+    metric = factor(metric,
+                    levels = c("precision", "recall", "f1"),
+                    labels = c("Precision", "Recall", "F1"))
+  )
+
+p <- ggplot(plot_data, aes(x = size_class, y = score,
+                           fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c(
+    "Precision" = "#1f77b4",
+    "Recall"    = "#d62728",
+    "F1"        = "#2ca02c"
+  )) +
+  scale_y_continuous(
+    labels = function(x) x * 100,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  labs(
+    x = "Crown size Classes",
+    y = "Performance Score (%)",
+    fill = "Metric"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    panel.grid.minor = element_blank()
+  ) +
+  theme_fancy()
+
+print(p)
+
+# save
+
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/kremetart_crown_size_comparison.png",
+       plot = p, width = 10, height = 6, dpi = 600, bg = "white")
+
+
+```
+
+classes
+
+```{r}
+
+library(dplyr)
+
+# Create size classes
+
+df <- df %>%
+  mutate(
+    crown_size_class = cut(
+      area_m2,
+      breaks = quantile(area_m2, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = c("Small", "Medium", "Large")
+    )
+  )
+
+# Create summary table
+
+size_summary <- df %>%
+  group_by(crown_size_class) %>%
+  summarise(
+    n = n(),
+    min_area = min(area_m2, na.rm = TRUE),
+    max_area = max(area_m2, na.rm = TRUE),
+    median_area = median(area_m2, na.rm = TRUE)
+  )
+
+print(size_summary)
+
+
+```
+
+
+# **References**
