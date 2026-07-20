@@ -130,7 +130,6 @@ writeRaster(maps_pan_feb_mosaic, "/Data/Merged/Maps/maps_pan_feb_mosaic.tiff", o
 
 ```
 
-
 Cloud and shadow masking
 
 For cloud and shadow masking, we will use the OmnicloudMask model. The model is implemented in Python, therefore we will use the reticulate package to run Python code in R.
