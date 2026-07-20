@@ -1,33 +1,42 @@
-## Phiri_et_al_baobab_mapping_with_unet
+# Phiri_et_al_baobab_mapping_with_unet
 
-# About This Repository
+## About this repository
 
-A permanent archived copy of this repository is available on Zenodo DOI: [to be added].
+This repository contains R code used in our manuscript:
 
-This repository contains R scripts produced to process, analyse, and visualise 
-WorldView-3 satellite data, and field observations. The aim is to map baobab populations
-with WorldView-3 images and machine learning model (U-Net).
+“[Title of our Manuscript]”
+Chafika Phiri, Hugh A. Graham, Sarah Venter, Dawn Cory-Toussaint, Dave Hodgson, and Andrew M. Cunliffe
 
-# Project Background
+This study explores the use of deep learning (U-Net) and satellite imagery to map baobab tree distribution across heterogeneous landscapes.
 
-This work was funded by Few & Far Collection as part of the Oppenheimer Programme in
-African Landscapes Systems (OPALS: https://opals-exeter.org/). 
-We conducted field surveys at two sites: Kremetart and Mapungubwe National Park.
+## Study overview
 
-# Publication
+We trained a U-Net deep learning model and evaluated its performance across two contrasting sites in South Africa: Kremetart Game Farm in the Soutpansberg and Mapungubwe National Park in Limpopo.
 
-The findings from this research are published in: [citation to be added]
+We used fine-resolution WorldView-3 satellite imagery and 755 field-validated GPS locations of baobab trees to assess detection performance across multiple spatial resolutions 0.3 m, 0.9 m, 2.7 m, and 8.1 m.
 
-# Contact
+## Repository structure
 
-For questions or collaboration inquiries, please contact: cp844@exeter.ac.uk
+1. Data - Input datasets
+2. R scripts - Scripts for preprocessing, modelling, and analysis
+3. Results – Output files, figures, and model results
 
-# Contents
+## Citation
 
-This repo contains the following scripts: [descriptions to be added]
+If you use this code, please cite as:
 
-Data: [details to be added]
+Phiri, C., Graham, H. A., Venter, S., Cory-Toussaint, D., Hodgson, D., & Cunliffe, A. M. (Year).
+[Title of Manuscript]. 
+DOI: [Insert DOI]
 
-# Additional Information
-[to be added]
+## Contact
+
+For questions, collaboration, or data access requests:
+
+Chafika Phiri
+Email: cp844@exeter.ac.uk
+
+## Acknowledgements
+
+We gratefully acknowledge financial support from Few and Far Collection within the Oppenheimer Programme in African Landscape Systems (OPALS) (https://opals-exeter.org/), which enabled this research. We sincerely thank landowners at Kremetart, Wild Estate WE (PTY) Ltd, ZZ2, Francois Pauer, and South African National Parks (SANParks) for granting access and permission to conduct fieldwork. We thank Alan Nare and Tapiwa Gumbo for their support during data collection. We also thank Oscar Hountondji, Remy Vandaele, and Scott Barningham for their valuable insights during the development and implementation of the of U-Net modelling workflow.
 
