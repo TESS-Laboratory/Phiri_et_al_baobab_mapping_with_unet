@@ -17,9 +17,15 @@ We used fine-resolution WorldView-3 satellite imagery and 755 field-validated GP
 
 ## Repository structure
 
-1. Data - Input datasets
-2. R scripts - Scripts for preprocessing, modelling, and analysis
-3. Results – Output files, figures, and model results
+### R Scripts
+
+1. Preprocessing images 
+2. U-Net modelling
+3. Analysis and visualisation
+
+## Data
+
+Input datasets including image chips, and training labels are available publicly at Zenodo: [Zenodo link]
 
 ## Citation
 
