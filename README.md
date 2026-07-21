@@ -17,14 +17,16 @@ We used fine-resolution WorldView-3 satellite imagery and 755 field-validated GP
 
 ## Repository structure
 
-### R Scripts
+This repository contains the following folders:
 
-1. WorldView_3_mosaicking_and_Cloud_and_Shadow_Masking.qmd 
-2. WorldView3_Image_Coregistration.R
-3. Image_rescaling_and_resampling.R
-4. Image_Mask_Patch_Extraction.R
-5. U_Net_Model_Archictecture_and_Training.R
-6. Performance_evaluation_visualisation.qmd
+* `R Scripts`: Contains the R scripts.
+            1. WorldView_3_mosaicking_and_Cloud_and_Shadow_Masking.qmd 
+            2. WorldView3_Image_Coregistration.R
+            3. Image_rescaling_and_resampling.R
+            4. Image_Mask_Patch_Extraction.R
+            5. U_Net_Model_Archictecture_and_Training.R
+            6. Performance_evaluation_visualisation.qmd
+* `Manuscripts Plots`: Contains the plots used in the manuscript.
 
 ## Data
 
