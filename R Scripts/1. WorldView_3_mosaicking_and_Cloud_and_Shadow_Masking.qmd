@@ -8,11 +8,11 @@ editor_options:
   chunk_output_type: console
 ---
 
-## WorldView 3 Mosaicking, and Cloud Masking
+**WorldView 3 Mosaicking, and Cloud Masking**
 
-This script is used to mosaic different WorldView-3 scenes into a single image, and mask clouds and shadows for further analysis.
+This script mosaics multiple WorldView-3 satellite scenes into a single image and applies cloud and shadow masking to prepare the data for further analysis.
 
-The first step is to load the required packages
+The workflow begins by loading the required packages.
 
 ```{r}
 #| label: Packages
@@ -24,38 +24,40 @@ library(RStoolbox)
 
 ```
 
-Worldview-3 data is provided as a series of .tifs, therefore we are going to mosaick multispectral .tif files for each month into a large single file and panchromatic .tif files for each month will also be mosaicked into a large single file. Import the WorldView-3 scenes with multispectral bands and panchromatic band into R.
+WorldView-3 data are provided as a series of .tif files. In this workflow, multispectral images for each month are mosaicked into a single composite image, and panchromatic images for each month are similarly mosaicked into a single file. The WorldView-3 scenes, including both multispectral and panchromatic bands, are then imported into R for further processing.
 
 ```{r}
 #| labbel: image-scenes
 
 # set the working directory
 
+setwd("C:/Users/cp844/University of Exeter/TESSLab - Chafika Phiri Data/Objective 3 Manuscript/Satellite Data")
+
 # kremetart scenes with multispectral bands collected on July 22, 2024.
 
 krem_ms_july_files <- list.files(
-  "/Data/050333425010_01_Kre/050333425010_01_P001_MUL",
+  "Data/050333425010_01_Kre/050333425010_01_P001_MUL",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE
 )
 
 krem_pan_july_files <- list.files(
-  "/Data/050333425010_01_Kre/050333425010_01_P001_PAN",
+  "Data/050333425010_01_Kre/050333425010_01_P001_PAN",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE  
 )
 
 krem_ms_feb_files <- list.files(
-  "/Data/050333425010_01_Kre/050333425010_01_P002_MUL",
+  "Data/050333425010_01_Kre/050333425010_01_P002_MUL",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE  
 )
 
 krem_pan_feb_files <- list.files(
-  "/Data/050333425010_01_Kre/050333425010_01_P002_PAN",
+  "Data/050333425010_01_Kre/050333425010_01_P002_PAN",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE  
@@ -63,7 +65,7 @@ krem_pan_feb_files <- list.files(
 
 # mapungubwe scenes
 
-maps_ms_july_files <- list.files("/Data/050333425020_01_Maps/050333425020_01_P001_MUL",
+maps_ms_july_files <- list.files("Data/050333425020_01_Maps/050333425020_01_P001_MUL",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE
@@ -75,13 +77,13 @@ maps_pan_july_files <- list.files("/Data/050333425020_01_Maps/050333425020_01_P0
   ignore.case = TRUE  
 )
 
-maps_ms_feb_files <- list.files("/Data/050333425020_01_Maps/050333425020_01_P002_MUL",
+maps_ms_feb_files <- list.files("Data/050333425020_01_Maps/050333425020_01_P002_MUL",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE  
 )
 
-maps_pan_feb_files <- list.files("/Data/050333425020_01_Maps/050333425020_01_P002_PAN",
+maps_pan_feb_files <- list.files("Data/050333425020_01_Maps/050333425020_01_P002_PAN",
   pattern = "\\.tif$",
   full.names = TRUE,
   ignore.case = TRUE  
@@ -111,30 +113,30 @@ maps_pan_feb_mosaic <- terra::mosaic(maps_pan_feb_spatraster)
 
 # save all the mosaicked images
 
-writeRaster(krem_ms_july_mosaic, "/Data/Merged/Kremetart/krem_ms_july_mosaic.tiff", overwrite = TRUE)
+writeRaster(krem_ms_july_mosaic, "Data/Merged/Kremetart/krem_ms_july_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(krem_pan_july_mosaic, "/Data/Merged/Kremetart/krem_pan_july_mosaic.tiff", overwrite = TRUE)
+writeRaster(krem_pan_july_mosaic, "Data/Merged/Kremetart/krem_pan_july_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(krem_ms_feb_mosaic, "/Data/Merged/Kremetart/krem_ms_feb_mosaic.tiff", overwrite = TRUE)
+writeRaster(krem_ms_feb_mosaic, "Data/Merged/Kremetart/krem_ms_feb_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(krem_pan_feb_mosaic, "/Data/Merged/Kremetart/krem_pan_feb_mosaic.tiff", overwrite = TRUE)
+writeRaster(krem_pan_feb_mosaic, "Data/Merged/Kremetart/krem_pan_feb_mosaic.tiff", overwrite = TRUE)
 
 
-writeRaster(maps_ms_july_mosaic, "/Data/Merged/Maps/maps_ms_july_mosaic.tiff", overwrite = TRUE)
+writeRaster(maps_ms_july_mosaic, "Data/Merged/Maps/maps_ms_july_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(maps_pan_july_mosaic, "/Data/Merged/Maps/maps_pan_july_mosaic.tiff", overwrite = TRUE)
+writeRaster(maps_pan_july_mosaic, "Data/Merged/Maps/maps_pan_july_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(maps_ms_feb_mosaic, "/Data/Merged/Maps/maps_ms_feb_mosaic.tiff", overwrite = TRUE)
+writeRaster(maps_ms_feb_mosaic, "Data/Merged/Maps/maps_ms_feb_mosaic.tiff", overwrite = TRUE)
 
-writeRaster(maps_pan_feb_mosaic, "/Data/Merged/Maps/maps_pan_feb_mosaic.tiff", overwrite = TRUE)
+writeRaster(maps_pan_feb_mosaic, "Data/Merged/Maps/maps_pan_feb_mosaic.tiff", overwrite = TRUE)
 
 ```
 
-Cloud and shadow masking
+**Cloud and shadow masking**
 
-For cloud and shadow masking, we will use the OmnicloudMask model. The model is implemented in Python, therefore we will use the reticulate package to run Python code in R.
+Cloud and shadow masking is performed using the OmnicloudMask model. As the model is implemented in Python, the reticulate package is used to interface Python within the R environment.
 
-The OmnicloudMask model was trained on Sentinel-2 images with spatial resolution of 10 m. Since our WorldView 3 image is 0.3 m, we will resample the image to 10 m for inference
+The OmnicloudMask model was trained on Sentinel-2 imagery with a spatial resolution of 10 m. To ensure compatibility, the higher-resolution WorldView-3 imagery (0.3 m) is resampled to 10 m prior to inference.
 
 ```{python}
 
@@ -145,7 +147,7 @@ from omnicloudmask import predict_from_array
 
 # Path to your image
 
-img_path = "/Data/Merged/Kremetart_WV3/krem_feb_pansharpened.tiff"
+img_path = "Data/Merged/Kremetart_WV3/krem_feb_pansharpened.tiff"
 
 with rio.open(img_path) as src:
   
@@ -179,7 +181,7 @@ plt.show()
 
 ```
 
-Overlay the cloud and shadow masks image on the RGB
+Overlay the cloud and shadow mask images on the RGB
 
 ```{python}
 

@@ -13,7 +13,11 @@ format:
 
 # Introduction
 
-The aim of this script is to perform analysis, performance evaluation and visualisation of the U-Net deep learning model for baobab mapping using multi-seasonal satellite imagery. The script is structured into several sections, each focusing on a specific aspect of the analysis. The sections include:
+This script performs analysis, performance evaluation, and visualisation of 
+a U-Net deep learning model for mapping African baobab trees using 
+multi-seasonal satellite imagery. 
+
+The workflow is structured into several sections, each addressing a specific component of the analysis presented in our Manuscript: Chafika Phiri, Hugh A. Graham, Sarah Venter, Dawn Cory-Toussaint, Dave Hodgson, and Andrew M. Cunliffe (2026): “[Title of our Manuscript]”
 
 
 ```{r}
@@ -81,9 +85,9 @@ theme_fancy <- function() {
     )
 }
 
-
 ```
 
+Load the csv files containing the metrics for different model sizes and combine them into a single data frame.
 
 ```{r}
 #| echo: false
@@ -99,7 +103,6 @@ theme_fancy <- function() {
 #  mutate(size = "patch_128x128")
 
 #all_metrics <- bind_rows(patch_128x128, patch_256x256, patch_512x512)
-
 
 # Plot metrics over epochs for different model sizes
 
@@ -145,7 +148,6 @@ All Metric_Plots
 ```{r}
 #| echo: false
 #| warning: false
-
 
 # multiple metrics in one plot
 
@@ -196,7 +198,6 @@ We conducted object-level validation by comparing manually delineated tree crown
 
 ```{r}
 
-
 #| echo: false
 #| warning: false
 #| messages: false
@@ -220,7 +221,6 @@ Mapungubwe <- st_read("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Cr
 # Remove any empty or invalid geometries
 
 aoi <- st_make_valid(Mapungubwe)
-
 
 # load raster
 
@@ -258,7 +258,6 @@ unique(values(aoi_trimmed))
 writeRaster(aoi_trimmed,
             "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Predicted_Maps/Evaluation_Site_Maps/game_reserve_baobab_map_july_8.1m_binary.tif",
             overwrite = TRUE)
-
 
 ```
 
@@ -370,8 +369,6 @@ terra::writeVector(reference,
                    "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/july_nature_serve_reference_polygons_0.9m.gpkg",
                    overwrite = TRUE)
 
-
-
 ```
 
 
@@ -384,7 +381,6 @@ save csv files for the metrics
 #| messages: false
 
 # Save results as csv files----------------------------------------------------
-
 
 site_name <- "nature_reserve_evaluation_july_0.9m"
 
@@ -443,13 +439,14 @@ cat("  - reference_per_polygon.csv   (one row per ref,   for distributions)\n")
 
 ## the effect of spatial resolution and dataset on the model performance
 
+In this section, we evaluated how changes in spatial resolution and dataset composition affect the performance of the U-Net model.
+
 ```{r}
 
 # Performance metrics by spatial resolution and dataset
-# Two sites, three metrics (Precision, Recall, F1), four resolutions and datasets
+# Two sites, three metrics (Precision, Recall, F1-Score), four resolutions and datasets
 
 # Load all CSVs into a single combined data frame 
-
 
 csv_files <- list.files(
   path = "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/CSV_logs/Evaluation_Results/Metrics_Summaries/",
@@ -548,7 +545,6 @@ main_plot <- ggplot(long, aes(x = resolution, y = score,
     plot.margin      = margin(10, 15, 10, 10)
   ) 
    
-
 print(main_plot)
 
 ggsave(
@@ -583,18 +579,14 @@ ggsave(
 
 ```
 
-Spatial grain trend lines on all the datasets
-
-
-
 ## the effect of crown sizes on the model performance
+
+This section assesses model performance across different tree crown size classes (small, medium and large) and spatial resolutions. It examines how variations in crown size and image resolution influence detection accuracy, precision, recall, and F-Score
 
 ```{r}
 
-
 # Performance metrics by crown size and spatial resolution
 # Two sites, three metrics (Precision, Recall, F1), four resolutions
-
 
 # ---- Packages ----------------------------------------------------------------
 
@@ -603,13 +595,10 @@ library(tidyr)
 library(ggplot2)
 library(stringr)
 
-
 # ---- load the files ----------------------------------------------------------
 
 site1_path <- "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/kremetart_july"
 site2_path <- "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Tree_Crowns_Polygons/Predicted_Polygons/Predicted_Polygon_Areas/mapungubwe_july"
-
-
 
 resolution_pattern <- "\\d+\\.\\d+m"
 resolution_levels  <- c("0.3 m", "0.9 m", "2.7 m", "8.1 m")
@@ -617,7 +606,6 @@ resolution_colors  <- c("0.3 m" = "#264653",
                         "0.9 m" = "#2A9D8F",
                         "2.7 m" = "#E9C46A",
                         "8.1 m" = "#d62728")
-
 
 # ---- Read CSVs from both site folders ----------------------------------------
 
@@ -631,7 +619,6 @@ read_site <- function(folder) {
 }
 
 combined <- bind_rows(read_site(site1_path), read_site(site2_path))
- 
 
 # ---- Derive site, resolution, and file type from filename --------------------
 
@@ -654,7 +641,6 @@ if (any(is.na(combined$resolution))) stop("Some rows have no resolution parsed."
 
 cat("Status values by file type:\n")
 print(table(combined$file_type, combined$status, useNA = "ifany"))
-
 
 # ---- Equal-count crown size bins from reference polygons ---------------------
 
@@ -685,7 +671,6 @@ combined <- combined |>
                          labels         = bin_labels,
                          include.lowest = TRUE))
 
-
 # ---- Precision, Recall, F1 (TP/FP from predictions, FN from reference) -------
 
 tp_fp <- combined |>
@@ -709,7 +694,6 @@ metrics <- full_join(tp_fp, fn, by = c("site_label", "resolution", "crown_bin"))
                              2 * Precision * Recall / (Precision + Recall),
                              NA_real_))
 
-
 # ---- Long format -------------------------------------------------------------
 
 metrics_long <- metrics |>
@@ -717,7 +701,6 @@ metrics_long <- metrics |>
                names_to  = "metric",
                values_to = "value") |>
   mutate(metric = factor(metric, levels = c("F1-score", "Precision", "Recall")))
-
 
 # ---- Reference polygon counts per site x bin ---------------------------------
 
@@ -732,7 +715,6 @@ n_labels <- ref_unique |>
                                   levels = c("F1-score", "Precision", "Recall"))) |>
   mutate(label = paste0("n = ", n))
 
-
 # ---- N labels: total TP predicted by the model per site × crown size ---------
 
 #n_labels <- tp_fp |>
@@ -741,7 +723,6 @@ n_labels <- ref_unique |>
 #  tidyr::crossing(metric = factor(c("F1-score", "Precision", "Recall"),
 #                                  levels = c("F1-score", "Precision", "Recall"))) |>
 #  mutate(label = paste0("n = ", n))
-
 
 # ---- Plot --------------------------------------------------------------------
 
@@ -766,9 +747,7 @@ p <- ggplot(metrics_long,
     strip.text = element_text(face = "bold")
   ) 
   
-
 print(p)
-
 
 # ---- Save --------------------------------------------------------------------
 
@@ -781,15 +760,15 @@ ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Result
 
 ```
 
-
 ### Seasonality influence
+
+This section assesses model performance across imagery from different seasons and spatial resolutions. It examines how seasonal changes in vegetation and variations in image resolution influence key performance metrics.
 
 ```{r}
 
-
 # Performance metrics by imagery composition (season) and spatial resolution
-# Site 1 only
 
+# Site 1 only - since we only had two images acquired at Kremetart, therefore comparisons were only done at kremetart
 
 # ---- Packages ----------------------------------------------------------------
 
@@ -797,7 +776,6 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(stringr)
-
 
 # ----load the files------------------------------------------------------------
 
@@ -826,7 +804,6 @@ combined <- bind_rows(lapply(seq_along(season_paths), function(i) {
   read_season(season_paths[[i]], names(season_paths)[i])
 }))
 
-
 # ---- Derive resolution and file type from filename ---------------------------
 
 combined <- combined |>
@@ -845,7 +822,6 @@ cat("Rows per season and resolution:\n")
 print(table(combined$season_label, combined$resolution))
 cat("\nStatus values by file type:\n")
 print(table(combined$file_type, combined$status, useNA = "ifany"))
-
 
 # ---- Precision, Recall, F1 (TP/FP from predictions, FN from reference) -------
 
@@ -872,13 +848,11 @@ metrics <- full_join(tp_fp, fn, by = c("season_label", "resolution")) |>
 
 # ---- Colours now map to imagery composition (the key comparison) -------------
 
-
 season_colours <- c(
   "Single (wet)"    = "lightseagreen",
   "Single (dry)"    = "black",
   "Multi (dry+wet)" = "firebrick"
 )
-
 
 # ---- Reshape to long format so each metric can be plotted as its own facet ---
 
@@ -889,7 +863,6 @@ metrics_long <- metrics |>
     values_to = "value"
   ) |>
   mutate(resolution_m = as.numeric(str_replace(resolution, " m", "")))
-
 
 # ---- Plot: lines across spatial grain, one line per imagery composition ------
 
@@ -923,7 +896,6 @@ seasonality <- ggplot(metrics_long,
 
 plot(seasonality)
 
-
 # ---- Save --------------------------------------------------------------------
 
 ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/seasonality_resolution_summary_plot.png", plot = seasonality,
@@ -933,18 +905,15 @@ ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Result
        dpi    = 600,
        bg     = "white")
 
-
 ```
 
 ## landscape complexity based on the land use type
 
+This section evaluates model performance across different landscape types (National Park, Irrigated Cropland, and Game Reserve) and spatial resolutions. It examines how variations in land cover and image detail influence key performance metrics, including accuracy, precision, recall, and F1-score.
 
 ```{r}
 
-
-# Performance metrics by imagery composition (season) and spatial resolution
-# Site 1 only
-
+# Performance metrics by imagery landscapes National Park, Irrigated Crop Land, Game Reserve and spatial resolution
 
 # ---- Packages ----------------------------------------------------------------
 
@@ -952,7 +921,6 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(stringr)
-
 
 # ---- load the files ----------------------------------------------------------
 
@@ -981,7 +949,6 @@ landuse_colors <- c(
   "National Park"    = "#d62728"
 )
 
-
 # ---- Read CSVs from all season folders ---------------------------------------
 
 read_season <- function(folder, season_label) {
@@ -997,7 +964,6 @@ read_season <- function(folder, season_label) {
 combined <- bind_rows(lapply(seq_along(season_paths), function(i) {
   read_season(season_paths[[i]], names(season_paths)[i])
 }))
-
 
 # ---- Derive resolution and file type from filename ---------------------------
 
@@ -1017,7 +983,6 @@ cat("Rows per season and resolution:\n")
 print(table(combined$season_label, combined$resolution))
 cat("\nStatus values by file type:\n")
 print(table(combined$file_type, combined$status, useNA = "ifany"))
-
 
 # ---- Precision, Recall, F1 (TP/FP from predictions, FN from reference) -------
 
@@ -1042,7 +1007,6 @@ metrics <- full_join(tp_fp, fn, by = c("season_label", "resolution")) |>
                              2 * Precision * Recall / (Precision + Recall),
                              NA_real_))
 
-
 # ---- Sample sizes: reference crowns per land-use type ------------------------
 # One reference crown is a row in a reference file, so n is the count of those
 # rows per land-use type, taken at a single resolution to avoid counting the
@@ -1052,7 +1016,6 @@ sample_sizes <- combined |>
   filter(file_type == "reference", resolution == resolution_levels[1]) |>
   count(season_label, name = "n")
 
-
 # ---- Land-use labels: complexity + sample size -------------------------------
 
 landuse_labels <- sample_sizes |>
@@ -1060,7 +1023,6 @@ landuse_labels <- sample_sizes |>
          label = str_glue("{season_label} ({complex} complex, n = {n})")) |>
   select(season_label, label) |>
   deframe()
-
 
 # ---- Long format -------------------------------------------------------------
 
@@ -1070,7 +1032,6 @@ metrics_long <- metrics |>
                values_to = "value") |>
   mutate(metric = factor(metric, levels = c("F1-score", "Precision", "Recall")),
          grain_m = as.numeric(str_remove(as.character(resolution), " m")))
-
 
 # ---- Plot --------------------------------------------------------------------
 
@@ -1105,7 +1066,6 @@ landscape_complexity <- ggplot(metrics_long,
 
 print(landscape_complexity)
 
-
 # ---- Save --------------------------------------------------------------------
 
 ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/landscape_complexity_resolution_summary_plot.png", plot = landscape_complexity,
@@ -1114,8 +1074,6 @@ ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Result
        units  = "cm",
        dpi    = 600,
        bg     = "white")
-
-
 
 ```
 

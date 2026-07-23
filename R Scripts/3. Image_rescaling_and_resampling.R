@@ -2,17 +2,19 @@
 # Introduction
 #-------------------------------------------------------------------------------
 
-# This script is designed to process WorldView-3 satellite imagery for the 
-# Kremetart area, specifically for the months of February and July. 
-# The script performs the following tasks: scaling reflectance values to 8bit 0-255, 
-# combines the multi-seasonal imagery into a single 16 bands raster,
-# and resampling images to multiple spatial resolutions 0.9 m, 2.7 m, and 8.1 m. 
-# The processed images are then saved in a specified directory.
+# This script processes WorldView-3 satellite imagery (0.3 m spatial grain) acquired over 
+# Kremetart area during February and July, and Mapungubwe National Park. 
+# The workflow includes scaling reflectance values to 8-bit (0–255), combining 
+# multi-seasonal imagery into a single 16-band raster, and resampling the imagery to multiple spatial 
+# resolutions (0.9 m, 2.7 m, and 8.1 m). 
+# The processed datasets are then exported and saved in the specified directory for further analysis.
 
 # Load the required packages
 
 library(tidyverse)
 library(terra)
+
+setwd("C:/Users/cp844/University of Exeter/TESSLab - Chafika Phiri Data/Objective 3 Manuscript/")
 
 # WorldView-3 kremetart february imagery rescaling
 

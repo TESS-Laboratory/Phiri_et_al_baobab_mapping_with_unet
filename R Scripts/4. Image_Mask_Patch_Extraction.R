@@ -2,10 +2,11 @@
 # Introduction
 #-------------------------------------------------------------------------------
 
-# This script extracts image patches and corresponding binary masks for U-Net training.
-# The extraction use the centroid of polygons as the center of the patches. 
-# The script also handles cases where the patch would extend beyond the image 
-# boundaries by shifting the patch inward.
+# This script extracts image patches and corresponding binary masks for U-Net 
+# model training. Patch extraction is based on the centroids of polygons, which 
+# are used as the centre points of the image patches. The workflow also handles 
+# cases where patches extend beyond image boundaries by automatically shifting 
+# them inward to ensure complete extraction.
 
 # Load the required packages
 

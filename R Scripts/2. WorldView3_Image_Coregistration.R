@@ -2,17 +2,21 @@
 # Introduction
 # ------------------------------------------------------------------------------
 
-# This R script was used perform image co-registration of two WorldView-3 multispectral 
-# satellite images from Kremetart, in South Africa, acquired in February and 
-# July. 
-# The script loads the images, handles missing data, automatically 
-# calculates the optimal alignment, and then applies a manual fine-tuning shift 
-# to perfectly align the February image with the July reference image.
+# This script performs image co-registration of two WorldView-3 multispectral 
+# satellite images acquired over Kremetart, South Africa, in February and July. 
+# The workflow includes loading the images, handling missing data, 
+# automatically estimating the optimal spatial alignment, and applying a 
+# manual fine-tuning shift to accurately align the February image to the 
+# July reference image.
 
 # Load the required packages
 
 library(terra)
 library(RStoolbox)
+
+# set the working directory
+
+setwd("C:/Users/cp844/University of Exeter/TESSLab - Chafika Phiri Data/Objective 3 Manuscript/")
 
 # Load images using
 

@@ -2,11 +2,11 @@
 # Introduction
 #-------------------------------------------------------------------------------
 
-# This script implements a six-fold cross-validation training of a U-Net model 
-# for baobab mapping using WorldView-3 image chips. 
-# It includes data loading, augmentation, loss function definition, and 
-# model architecture development and modelling.
-
+# This script implements a six-fold cross-validation framework for training a 
+# U-Net deep learning model to map African baobab trees using WorldView-3 
+# high-resolution image chips. The workflow includes data loading, image 
+# augmentation, loss function definition, U-Net architecture development, 
+# model training, and evaluation.
 
 # load the required packages
 
@@ -97,6 +97,9 @@ chip_dataset <- dataset(
 
 # ----------------- file lists
 
+# set the working directory
+
+setwd("C:/Users/cp844/University of Exeter/TESSLab - Chafika Phiri Data/Objective 3 Manuscript/Training Patches")
 
 image_dir <- "image patches/Kremetart_feb_polygons/new_feb_256_8bands/images"
 mask_dir  <- "image patches/Kremetart_feb_polygons/new_feb_256_8bands/masks"
@@ -551,7 +554,7 @@ for (fold in seq_len(n_folds)) {
   
   plot(fitted)
   
-  # ---- Evaluate this fold and store the result ----------------------------
+  # Evaluate this fold and store the result ------------------------------------
   # evaluate() runs the trained model over this fold's validation set and
   # returns its final metric scores.
   evaluation <- fitted |> evaluate(data = val_dl)
