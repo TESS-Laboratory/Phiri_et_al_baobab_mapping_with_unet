@@ -46,6 +46,7 @@ library(gt)         # for tables
 library(gtExtras)  # extension for tables
 library(readxl)
 library(scales)
+library(gridExtra)
 library(ragg)
 library(webshot2)
 
@@ -498,7 +499,7 @@ print(summary_tbl)
 
 write.csv(
   summary_tbl,
-  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/spatial_grain_summary.csv",
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/spatial_grain_summ#ary.csv",
   row.names = FALSE
 )
 
@@ -533,22 +534,29 @@ main_plot <- ggplot(long, aes(x = resolution, y = score,
   theme_minimal(base_size = 12) +
   theme_fancy() +
   theme(
-    axis.title       = element_text(size = 10, face = "bold"),
-    axis.text        = element_text(size = 10, colour = "black"),
-    strip.text       = element_text(size = 10, face = "bold"),
-    legend.title     = element_text(size = 10),
-    legend.text      = element_text(size = 10),
-    legend.position  = "bottom",
-    legend.key.width = unit(1.2, "cm"),
-    panel.grid.minor = element_blank(),
-    panel.spacing.x = unit(1, "lines"),
-    plot.margin      = margin(10, 15, 10, 10)
-  ) 
+    axis.title        = element_text(size = 10, face = "bold"),
+    axis.text         = element_text(size = 10, colour = "black"),
+    strip.text        = element_text(size = 10, face = "bold"),
+    legend.title      = element_text(size = 10),
+    legend.text       = element_text(size = 10),
+    legend.position   = "bottom",
+    legend.direction  = "horizontal",
+    legend.box        = "horizontal",
+    legend.title.position = "top",
+    legend.key.width  = unit(1.0, "cm"),
+    legend.key.height = unit(0.4, "cm"),
+    legend.margin     = margin(0, 0, 0, 0),
+    legend.box.spacing = unit(0.2, "cm"),
+    panel.grid.minor  = element_blank(),
+    panel.spacing.x   = unit(1, "lines"),
+    plot.margin       = margin(10, 15, 10, 10)
+  ) +
+  guides(colour = guide_legend(nrow = 1, byrow = TRUE))
    
 print(main_plot)
 
 ggsave(
-  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/spatial_grain_comparison_across.png",
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/spatial_grain_comparison_across.png",
   plot   = main_plot,
   width  = 21.0,
   height = 14.85,
@@ -572,7 +580,7 @@ final <- wrap_elements(table_grob) #/ main_plot +
 print(final)
 
 ggsave(
-  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/spatial_grain_combined_summary_plot.png",
+  "C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/spatial_grain_combined_summary_plot.png",
   plot = final, width = 12, height = 10, dpi = 600, bg = "white"
 )
 #ggsave("combined_summary_plot.png", final, width = 8, height = 7, dpi = 300)
@@ -751,7 +759,7 @@ print(p)
 
 # ---- Save --------------------------------------------------------------------
 
-ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/crown_sizes_combined_summary_plot.png", plot = p,
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/crown_sizes_combined_summary_plot.png", plot = p,
        width  = 21.0,
        height = 14.85,
        units  = "cm",
@@ -889,16 +897,30 @@ seasonality <- ggplot(metrics_long,
   theme_minimal(base_size = 12) +
   theme_fancy() +
   theme(
-    legend.position = "bottom",
-    panel.spacing.x = unit(1, "lines"),
-    strip.text = element_text(face = "bold")
-  )
+    axis.title        = element_text(size = 10, face = "bold"),
+    axis.text         = element_text(size = 10, colour = "black"),
+    strip.text        = element_text(size = 10, face = "bold"),
+    legend.title      = element_text(size = 10),
+    legend.text       = element_text(size = 10),
+    legend.position   = "bottom",
+    legend.direction  = "horizontal",
+    legend.box        = "horizontal",
+    legend.title.position = "top",
+    legend.key.width  = unit(1.0, "cm"),
+    legend.key.height = unit(0.4, "cm"),
+    legend.margin     = margin(0, 0, 0, 0),
+    legend.box.spacing = unit(0.2, "cm"),
+    panel.grid.minor  = element_blank(),
+    panel.spacing.x   = unit(1, "lines"),
+    plot.margin       = margin(10, 15, 10, 10)
+  ) +
+  guides(colour = guide_legend(nrow = 1, byrow = TRUE))
 
 plot(seasonality)
 
 # ---- Save --------------------------------------------------------------------
 
-ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/seasonality_resolution_summary_plot.png", plot = seasonality,
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/seasonality_resolution_summary_plot.png", plot = seasonality,
        width  = 21.0,
        height = 14.85,
        units  = "cm",
@@ -1059,16 +1081,30 @@ landscape_complexity <- ggplot(metrics_long,
   theme_minimal(base_size = 12) +
   theme_fancy() +
   theme(
-    legend.position = "bottom",
-    panel.spacing.x = unit(1, "lines"),
-    strip.text = element_text(face = "bold")
-  )
+    axis.title        = element_text(size = 10, face = "bold"),
+    axis.text         = element_text(size = 10, colour = "black"),
+    strip.text        = element_text(size = 10, face = "bold"),
+    legend.title      = element_text(size = 10),
+    legend.text       = element_text(size = 10),
+    legend.position   = "bottom",
+    legend.direction  = "horizontal",
+    legend.box        = "horizontal",
+    legend.title.position = "top",
+    legend.key.width  = unit(1.0, "cm"),
+    legend.key.height = unit(0.4, "cm"),
+    legend.margin     = margin(0, 0, 0, 0),
+    legend.box.spacing = unit(0.2, "cm"),
+    panel.grid.minor  = element_blank(),
+    panel.spacing.x   = unit(1, "lines"),
+    plot.margin       = margin(10, 15, 10, 10)
+  ) +
+  guides(colour = guide_legend(nrow = 2, byrow = TRUE))
 
 print(landscape_complexity)
 
 # ---- Save --------------------------------------------------------------------
 
-ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Objective_Three_Results_Plots/landscape_complexity_resolution_summary_plot.png", plot = landscape_complexity,
+ggsave("C:/Workspace/Phiri_et_al_baobab_mapping_with_unet/Manuscripts Plots/landscape_complexity_resolution_summary_plot.png", plot = landscape_complexity,
        width  = 21.0,
        height = 14.85,
        units  = "cm",
