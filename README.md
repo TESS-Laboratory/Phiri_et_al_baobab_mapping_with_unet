@@ -37,9 +37,8 @@ This repository contains the following folders:
 | *02_image_rescalling_and_resampling.R* | Stacks, rescales imagery to 8-bit, and resamples to four spatial grains (0.3, 0.9, 2.7, 8.1 m).|
 | *03_image_and_masks_patch extraction.R* | Extracts 256×256 image and mask patches for U-Net training.|
 | *04a_U_Net_model_training_kremetart_feb.R* | Trains the U-Net on Kremetart February (wet-season) imagery.|
-| *04b_U_Net_model_training_kremetart_july.R* | Trains the U-Net on Kremetart July (dry-season) imagery.|
+| *04b_U_Net_model_training_july.R* | Trains the U-Net on July (dry-season) imagery.|
 | *04c_U_Net_model_training_kremetart_feb_july.R* | Trains the U-Net on the combined Kremetart February+July (16-bands).|
-| *04d_U_Net_model_training_mapungubwe_july.R* | Trains the on Mapungubwe July imagery.|
 | *05_model_prediction.R* | Runs a trained model over a full landscape images and produces predictions.|
 | *06_performance_evaluation_on_each_site.R* | Matches predicted and reference crowns and calculates precision, recall and F1 for each site.|
 | *07_results_plots_and_visualisation.R* | Produces manuscript figures and supplementary outputs.|
@@ -49,8 +48,8 @@ This repository contains the following folders:
 
 | File | Description |
 |------|-------------|
-| *Kremetart_Tree_Polygons.gpkg* | Training dataset for Kremetart.|
-| *Mapungubwe_Tree_Polygons.gpkg* | Training dataset for Mapungubwe.|
+| *Kremetart_Tree_Polygons.gpkg* | Training polygons from Kremetart.|
+| *Mapungubwe_Tree_Polygons.gpkg* | Training polygons from Mapungubwe.|
 
 
 ---
@@ -75,7 +74,6 @@ The scripts should be run in this order:
 4. *04a_U_Net_model_training_kremetart_feb.R*
 5. *04b_U_Net_model_training_kremetart_july.R*
 6. *04c_U_Net_model_training_kremetart_feb_july.R*
-5. *04d_U_Net_model_training_mapungubwe_july.R*
 6. *05_model_prediction.R*
 5. *06_performance_evaluation_on_each_site.R*
 6. *07_results_plots_and_visualisation.R*

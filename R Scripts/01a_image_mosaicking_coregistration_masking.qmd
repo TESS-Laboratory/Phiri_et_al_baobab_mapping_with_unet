@@ -321,4 +321,4 @@ print(f"Masked image      : {masked_path}")
 
 **Pansharpening**
 
-The multispectral mosaics for Kremetart and Mapungubwe were pansharpened using their corresponding panchromatic mosaics in GDAL 3.10.3. Pansharpening was performed using nearest-neighbour resampling through the GDAL command-line utility, which supports multi-band multispectral imagery and can be executed directly for batch processing.
+The multispectral mosaics for Kremetart and Mapungubwe were pansharpened using their corresponding panchromatic mosaics in GDAL 3.10.3. Pansharpening was performed using bilinear resampling through the GDAL command-line utility, which supports multi-band multispectral imagery and can be executed directly for batch processing.

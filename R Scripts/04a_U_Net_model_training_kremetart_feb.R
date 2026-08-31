@@ -125,21 +125,6 @@ cat("Positive chips:", length(positive_image_files), "\n")
 cat("Negative chips:", length(negative_image_files), "\n")
 cat("Total chips:   ", length(image_files), "\n")
 
-# optional: further down-sample empty chips, now that positives and negatives
-# are combined above, the negative:positive ratio is already set by how many
-# negative points you placed, so this is only needed for a different ratio
-# mask_summary <- data.frame(file = mask_files, pos_pixels = NA_integer_)
-# for (i in seq_along(mask_files)) {
-#   m <- as.array(terra::rast(mask_files[i]))[, , 1] > 0.5
-#   mask_summary$pos_pixels[i] <- sum(m, na.rm = TRUE)
-# }
-# pos_files  <- which(mask_summary$pos_pixels > 0)
-# neg_files  <- which(mask_summary$pos_pixels == 0)
-# neg_keep   <- sample(neg_files, round(length(pos_files) * 0.40))
-# keep_idx   <- sort(c(pos_files, neg_keep))
-# image_files <- image_files[keep_idx]
-# mask_files  <- mask_files[keep_idx]
-
 #-------------------------------------------------------------------------------
 # Band statistics (computed per fold, training chips only, to avoid leakage)
 #-------------------------------------------------------------------------------
@@ -192,7 +177,7 @@ double_conv_block <- nn_module(
   }
 )
 
-triple_conv_block <- nn_module(
+three_layer_conv_block <- nn_module(
   initialize = function(in_channels, out_channels) {
     self$conv1 <- nn_conv2d(in_channels,  out_channels, kernel_size = 3, padding = 1)
     self$bn1   <- nn_batch_norm2d(out_channels)
@@ -224,10 +209,10 @@ unet_256 <- nn_module(
     
     self$center <- double_conv_block(512, 1024)
     
-    self$up4 <- triple_conv_block(1024 + 512, 512)
-    self$up3 <- triple_conv_block(512 + 256, 256)
-    self$up2 <- triple_conv_block(256 + 128,  128)
-    self$up1 <- triple_conv_block(128 + 64,  64)
+    self$up4 <- three_layer_conv_blockk(1024 + 512, 512)
+    self$up3 <- three_layer_conv_block(512 + 256, 256)
+    self$up2 <- three_layer_conv_block(256 + 128,  128)
+    self$up1 <- three_layer_conv_block(128 + 64,  64)
     
     self$classify <- nn_conv2d(64, num_classes, kernel_size = 1)
   },
@@ -241,8 +226,7 @@ unet_256 <- nn_module(
     ctr <- self$center(self$pool4(d4))
     
     up <- function(tensor, skip)
-      nnf_interpolate(tensor, scale_factor = 2,
-                      mode = "bilinear", align_corners = FALSE) |>
+      nnf_interpolate(tensor, scale_factor = 2, mode = "nearest") |>
       (\(t) torch_cat(list(skip, t), dim = 2))()
     
     u4 <- self$up4(up(ctr, d4))
@@ -425,7 +409,7 @@ for (fold in seq_len(n_folds)) {
   ckpt_path <- file.path(output_dir, sprintf("unet_%s_%s_fold%02d.pt", site_resolution_tag, run_id, fold))
   log_path  <- file.path(output_dir, sprintf("unet_%s_%s_fold%02d_log.csv", site_resolution_tag, run_id, fold))
   
-  # trains for the full 100 epochs; no early stopping, so every fold's run length is fixed
+  # trains for the 100 epochs
   fitted <- unet_256 |>
     setup(
       loss      = bce_dice_loss,
@@ -446,11 +430,6 @@ for (fold in seq_len(n_folds)) {
       valid_data = val_dl,
       epochs     = 100,
       callbacks  = list(
-        luz_callback_lr_scheduler(
-          lr_scheduler = torch::lr_step,
-          step_size    = 15,
-          gamma        = 0.5
-        ),
         luz_callback_model_checkpoint(
           path           = ckpt_path,
           monitor        = "valid_loss",

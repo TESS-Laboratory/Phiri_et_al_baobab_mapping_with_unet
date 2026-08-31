@@ -15,9 +15,6 @@ library(tidyverse)
 #-------------------------------------------------------------------------------
 # U-Net architecture
 #-------------------------------------------------------------------------------
-# Copy this block over manually if you change the architecture in the training
-# script, so the two stay the same.
-
 double_conv_block <- nn_module(
   initialize = function(in_channels, out_channels) {
     self$conv1 <- nn_conv2d(in_channels,  out_channels, kernel_size = 3, padding = 1)
@@ -32,7 +29,7 @@ double_conv_block <- nn_module(
   }
 )
 
-triple_conv_block <- nn_module(
+three_layer_conv_block <- nn_module(
   initialize = function(in_channels, out_channels) {
     self$conv1 <- nn_conv2d(in_channels,  out_channels, kernel_size = 3, padding = 1)
     self$bn1   <- nn_batch_norm2d(out_channels)
@@ -49,7 +46,8 @@ triple_conv_block <- nn_module(
   }
 )
 
-# in_channels has no default on purpose: the config section below states it explicitly
+# in_channels has no default here on purpose: n_input_bands (set once, above)
+# is the single source of truth, passed in via set_hparams() below
 unet_256 <- nn_module(
   initialize = function(in_channels, num_classes = 1) {
     self$down1 <- double_conv_block(in_channels, 64)
@@ -63,10 +61,10 @@ unet_256 <- nn_module(
     
     self$center <- double_conv_block(512, 1024)
     
-    self$up4 <- triple_conv_block(1024 + 512, 512)
-    self$up3 <- triple_conv_block(512 + 256, 256)
-    self$up2 <- triple_conv_block(256 + 128,  128)
-    self$up1 <- triple_conv_block(128 + 64,  64)
+    self$up4 <- three_layer_conv_blockk(1024 + 512, 512)
+    self$up3 <- three_layer_conv_block(512 + 256, 256)
+    self$up2 <- three_layer_conv_block(256 + 128,  128)
+    self$up1 <- three_layer_conv_block(128 + 64,  64)
     
     self$classify <- nn_conv2d(64, num_classes, kernel_size = 1)
   },
@@ -80,8 +78,7 @@ unet_256 <- nn_module(
     ctr <- self$center(self$pool4(d4))
     
     up <- function(tensor, skip)
-      nnf_interpolate(tensor, scale_factor = 2,
-                      mode = "bilinear", align_corners = FALSE) |>
+      nnf_interpolate(tensor, scale_factor = 2, mode = "nearest") |>
       (\(t) torch_cat(list(skip, t), dim = 2))()
     
     u4 <- self$up4(up(ctr, d4))
@@ -106,7 +103,7 @@ n_input_bands <- 8L            # set to 16L when predicting from the Feb+July st
 training_output_dir <- "Phiri_et_al_baobab_mapping_with_unet/256_pixels_results/Six_Fold/feb/"
 
 # season and resolution, split out of site_resolution_tag so the output name
-# matches what 6._performance_evaluation_on_each_site.R expects to parse
+
 season_key       <- sub("^(feb_july|feb|july)_.*$", "\\1", site_resolution_tag)
 resolution_label <- sub("^(feb_july|feb|july)_([0-9.]+)m$", "\\2", site_resolution_tag)
 
@@ -117,13 +114,12 @@ config <- list(
   band_stats_path = file.path(training_output_dir,
                               sprintf("%s_stats_fold%02d.rds", site_resolution_tag, selected_fold)),
   output_dir      = "outputs",
-  # "{site}_baobab_map_{season}_{resolution}m" - matches the naming
-  # build_manifest_from_directory() requires in the evaluation script
+  
   output_prefix   = sprintf("%s_baobab_map_%s_%sm", site_key, season_key, resolution_label),
   
   patch_size   = 256L,   # must match the patch size used for training
-  crop_margin  = 32L,    # pixels trimmed from each tile edge that borders another tile
-  overlap_frac = 0.5,    # fraction of patch_size used as the tiling stride
+  crop_margin  = 32L,    
+  overlap_frac = 0.5,    # overlap fraction 
   batch_size   = 8L,
   threshold    = 0.50,
   rgb_bands    = c(5, 3, 2),   # true-colour bands, for the preview image only
@@ -211,13 +207,12 @@ predict_landscape <- function(img_path, model, band_stats, config, device) {
   pred_sum   <- array(0,  dim = c(nrows, ncols))   # running sum of probabilities per pixel
   pred_count <- array(0L, dim = c(nrows, ncols))   # how many tiles contributed to each pixel
   
-  # writes one batch's predictions into pred_sum/pred_count, trimming crop_margin
-  # only on sides that border ANOTHER tile - true image edges keep the full patch,
-  # otherwise the outer border of the whole landscape would never get a prediction
+  # writes one batch's predictions into pred_sum/pred_count
+  
   flush_batch <- function(tiles, metas) {
     batch    <- torch_stack(tiles, dim = 1)$to(device = device)
     out_prob <- torch_sigmoid(model(batch))
-    src      <- as.array(out_prob$cpu())   # (batch, 1, patch_rows, patch_cols)
+    src      <- as.array(out_prob$cpu())   
     
     for (b in seq_along(metas)) {
       r  <- metas[[b]]$r
@@ -277,8 +272,8 @@ predict_landscape <- function(img_path, model, band_stats, config, device) {
   pred_avg <- pred_sum / pmax(pred_count, 1L)
   pred_avg[is.nan(pred_avg)] <- 0
   
-  out_rast <- terra::rast(img[[1]])           # copies geometry/CRS from the source raster
-  terra::values(out_rast) <- as.vector(t(pred_avg))   # transpose: R's column-major -> terra's row-major
+  out_rast <- terra::rast(img[[1]])           
+  terra::values(out_rast) <- as.vector(t(pred_avg))   
   names(out_rast) <- "baobab_probability"
   
   out_rast
@@ -287,6 +282,7 @@ predict_landscape <- function(img_path, model, band_stats, config, device) {
 #-------------------------------------------------------------------------------
 # Run inference and write outputs
 #-------------------------------------------------------------------------------
+
 prob_rast <- predict_landscape(
   img_path   = config$landscape_path,
   model      = model,
@@ -316,6 +312,7 @@ if (config$save_binary) {
 #-------------------------------------------------------------------------------
 # Preview: RGB vs predicted probability, centre 20% of the landscape
 #-------------------------------------------------------------------------------
+
 cat(sprintf("\n[%s] Generating preview\n", Sys.time()))
 img      <- terra::rast(config$landscape_path)
 crop_ext <- terra::ext(prob_rast)
