@@ -196,7 +196,7 @@ main_plot <- ggplot(long, aes(x = Resolution, y = score,
 
 print(main_plot)
 
-ggsave(file.path(out_dir, "spatial_grain_comparison_across.png"),
+ggsave(file.path(out_dir, "spatial_grain_comparison_plot.png"),
        plot = main_plot, width = 21.0, height = 14.85,
        units = "cm", dpi = 600, bg = "white")
 
@@ -449,7 +449,7 @@ print(p)
 dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 
 ggsave(
-  file.path(plot_dir, "crown_sizes_july_summary_plot.png"),
+  file.path(plot_dir, "crown_sizes_performance_plot.png"),
   plot   = p,
   width  = 21.0,
   height = 14.85,
@@ -652,7 +652,7 @@ print(seasonality)
 dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 
 ggsave(
-  file.path(plot_dir, "seasonality_resolution_kremetart.png"),
+  file.path(plot_dir, "seasonality_performance_plot.png"),
   plot   = seasonality,
   width  = 21.0,
   height = 14.85,
@@ -885,7 +885,7 @@ print(landscape_complexity)
 dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 
 ggsave(
-  file.path(plot_dir, "landscape_complexity_resolution_july.png"),
+  file.path(plot_dir, "landuse_type_perfomance_plot.png"),
   plot   = landscape_complexity,
   width  = 21.0,
   height = 14.85,
