@@ -50,6 +50,8 @@ This repository contains the following folders:
 |------|-------------|
 | *Kremetart_Tree_Polygons.gpkg* | Training polygons from Kremetart.|
 | *Mapungubwe_Tree_Polygons.gpkg* | Training polygons from Mapungubwe.|
+| *Kremetart_negatives_examples.gpkg* | Negative examples from Kremetart.|
+| *Mapungubwe_Non_baobab_points.gpkg* | Negative examples from Mapungubwe.|
 
 
 ---
