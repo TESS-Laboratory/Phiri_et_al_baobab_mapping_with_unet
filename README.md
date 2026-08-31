@@ -53,6 +53,7 @@ This repository contains the following folders:
 | *Kremetart_negatives_examples.gpkg* | Negative examples from Kremetart.|
 | *Mapungubwe_Non_baobab_points.gpkg* | Negative examples from Mapungubwe.|
 
+The image patches have been shared at **Zenodo**. However, the original satellite imagery are subject to the terms of the licence from the European Space Agency (ESA) and are therefore not included in this dataset.
 
 ---
 
