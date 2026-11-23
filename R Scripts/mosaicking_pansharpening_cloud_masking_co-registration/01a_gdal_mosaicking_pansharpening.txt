@@ -1,0 +1,191 @@
+# -------
+# Per-product pansharpening of WorldView-3 deliveries.
+# Tiles are assembled as virtual rasters, sharpened once, and written as GeoTIFF.
+# Requires: OSGeo4W with GDAL 3.10.3
+# -------
+
+$osgeoRoot      = "C:\OSGeo4W"
+$gdalBuildVrt   = Join-Path $osgeoRoot "bin\gdalbuildvrt.exe"
+$gdalInfo       = Join-Path $osgeoRoot "bin\gdalinfo.exe"
+$gdalPansharpen = Join-Path $osgeoRoot "apps\Python312\Scripts\gdal_pansharpen.exe"
+
+foreach ($executable in @($gdalBuildVrt, $gdalInfo, $gdalPansharpen)) {
+    if (-not (Test-Path $executable)) { throw "Executable not found: $executable" }
+}
+
+$dataRoot = "C:\Users\cp844\University of Exeter\TESSLab - Chafika Phiri Data\Objective 3 Manuscript\Satellite Data\Data"
+$vrtDir   = Join-Path $dataRoot "VRT"          # Holds the virtual rasters and file lists.
+$outDir   = Join-Path $dataRoot "Pansharpened" # Holds the sharpened products.
+
+foreach ($directory in @($vrtDir, $outDir)) {
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+}
+
+# Band order: Coastal, Blue, Green, Yellow, Red, RedEdge, NIR1, NIR2.
+# Replace each set with the values fitted for that product.
+$scenes = @(
+    @{
+        Name    = "krem_july"
+        MulDir  = Join-Path $dataRoot "050333425010_01_Kre\050333425010_01_P001_MUL"
+        PanDir  = Join-Path $dataRoot "050333425010_01_Kre\050333425010_01_P001_PAN"
+        Weights = @(0.0050, 0.1420, 0.2090, 0.1440, 0.2340, 0.1570, 0.1090, 0.0000)
+    },
+    @{
+        Name    = "krem_feb"
+        MulDir  = Join-Path $dataRoot "050333425010_01_Kre\050333425010_01_P002_MUL"
+        PanDir  = Join-Path $dataRoot "050333425010_01_Kre\050333425010_01_P002_PAN"
+        Weights = @(0.0050, 0.1420, 0.2090, 0.1440, 0.2340, 0.1570, 0.1090, 0.0000)
+    },
+    @{
+        Name    = "maps_july"
+        MulDir  = Join-Path $dataRoot "050333425020_01_Maps\050333974010_01_P001_MUL"
+        PanDir  = Join-Path $dataRoot "050333425020_01_Maps\050333974010_01_P001_PAN"
+        Weights = @(0.0050, 0.1420, 0.2090, 0.1440, 0.2340, 0.1570, 0.1090, 0.0000)
+    }
+)
+
+# Assembles the tiles in a folder into a single virtual raster.
+function New-TileVrt {
+    param(
+        [Parameter(Mandatory)][string]$TileDirectory,
+        [Parameter(Mandatory)][string]$VrtPath
+    )
+
+    # Maxar delivers .TIF; browse images and previews are excluded by name.
+    $tiles = Get-ChildItem -Path $TileDirectory -Filter "*.TIF" -File |
+             Where-Object { $_.Name -notmatch "BROWSE|-PREVIEW" } |
+             Sort-Object Name
+
+    if ($tiles.Count -eq 0) { return $null }
+
+    # A file list avoids the Windows command-line length limit, which a large
+    # tile grid would otherwise exceed.
+    $listPath = [System.IO.Path]::ChangeExtension($VrtPath, ".txt")
+    $tiles.FullName | Set-Content -Path $listPath -Encoding ASCII
+
+    & $gdalBuildVrt `
+        -input_file_list $listPath `
+        -resolution highest `
+        -srcnodata 0 `
+        -vrtnodata 0 `
+        -overwrite `
+        $VrtPath | Out-Null
+
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return [pscustomobject]@{ Path = $VrtPath; TileCount = $tiles.Count }
+}
+
+# Returns gdalinfo output parsed from JSON, so geometry can be read rather than assumed.
+function Get-RasterSummary {
+    param([Parameter(Mandatory)][string]$Path)
+    $raw = & $gdalInfo -json $Path 2>$null | Out-String
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return $raw | ConvertFrom-Json
+}
+
+foreach ($scene in $scenes) {
+
+    Write-Host ""
+    Write-Host "=== $($scene.Name) ==="
+
+    if (-not (Test-Path $scene.MulDir)) { Write-Warning "MUL folder missing: $($scene.MulDir)"; continue }
+    if (-not (Test-Path $scene.PanDir)) { Write-Warning "PAN folder missing: $($scene.PanDir)"; continue }
+
+    $mulVrtPath = Join-Path $vrtDir "$($scene.Name)_mul.vrt"
+    $panVrtPath = Join-Path $vrtDir "$($scene.Name)_pan.vrt"
+    $outputPath = Join-Path $outDir "$($scene.Name)_pansharpened.tif"
+    $partialPath = $outputPath -replace '\.tif$', '_partial.tif'
+
+    $mulVrt = New-TileVrt -TileDirectory $scene.MulDir -VrtPath $mulVrtPath
+    $panVrt = New-TileVrt -TileDirectory $scene.PanDir -VrtPath $panVrtPath
+
+    if ($null -eq $mulVrt -or $null -eq $panVrt) {
+        Write-Warning "Could not build virtual rasters, skipping: $($scene.Name)"
+        continue
+    }
+
+    Write-Host "  MUL tiles: $($mulVrt.TileCount)   PAN tiles: $($panVrt.TileCount)"
+
+    if (Test-Path $outputPath) { Write-Host "  Output exists, skipping."; continue }
+
+    $mulInfo = Get-RasterSummary $mulVrtPath
+    $panInfo = Get-RasterSummary $panVrtPath
+    if ($null -eq $mulInfo -or $null -eq $panInfo) {
+        Write-Warning "Could not read VRT metadata, skipping."
+        continue
+    }
+
+    # Bands must number eight, and one weight is required per band.
+    $bandCount = $mulInfo.bands.Count
+    Write-Host "  MUL bands: $bandCount"
+    if ($scene.Weights.Count -ne $bandCount) {
+        Write-Warning "Expected $bandCount weights, received $($scene.Weights.Count). Skipping."
+        continue
+    }
+
+    # Projections must agree; gdal_pansharpen does not reproject.
+    if ($mulInfo.coordinateSystem.wkt -ne $panInfo.coordinateSystem.wkt) {
+        Write-Warning "CRS mismatch between MUL and PAN. Reproject before sharpening. Skipping."
+        continue
+    }
+
+    # WorldView-3 delivers a 4:1 resolution ratio; a departure signals a
+    # resampled or mismatched product.
+    $mulPixel = [math]::Abs($mulInfo.geoTransform[1])
+    $panPixel = [math]::Abs($panInfo.geoTransform[1])
+    $ratio    = $mulPixel / $panPixel
+    Write-Host ("  Pixel sizes: MUL {0:N3} m, PAN {1:N3} m, ratio {2:N3}" -f $mulPixel, $panPixel, $ratio)
+    if ([math]::Abs($ratio - 4.0) -gt 0.05) {
+        Write-Warning "Resolution ratio is not 4. Inspect before proceeding."
+    }
+
+    # PREDICTOR=3 suits floating-point data, PREDICTOR=2 integers.
+    $predictor = if ($mulInfo.bands[0].type -match 'Float') { 3 } else { 2 }
+    $noData    = $mulInfo.bands[0].noDataValue
+
+    $arguments = @(
+        '-of', 'GTiff'
+        '-r', 'cubic'                   # Kernel used to upsample MS onto the PAN grid.
+        '-threads', 'ALL_CPUS'
+        '-spat_adjust', 'intersection'  # Restrict to the common footprint rather than
+                                        # padding the union with NoData.
+    )
+
+    foreach ($weight in $scene.Weights) {
+        $arguments += @('-w', ('{0:F4}' -f $weight))
+    }
+
+    if ($null -ne $noData) { $arguments += @('-nodata', $noData) }
+
+    $arguments += @(
+        '-co', 'COMPRESS=ZSTD'
+        '-co', 'ZSTD_LEVEL=3'
+        '-co', "PREDICTOR=$predictor"
+        '-co', 'TILED=YES'
+        '-co', 'BLOCKXSIZE=512'
+        '-co', 'BLOCKYSIZE=512'
+        '-co', 'BIGTIFF=YES'
+        '-co', 'NUM_THREADS=ALL_CPUS'
+        $panVrtPath
+        $mulVrtPath
+        $partialPath
+    )
+
+    $elapsed = Measure-Command { & $gdalPansharpen @arguments }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Pansharpening failed: $($scene.Name)"
+        Remove-Item $partialPath -ErrorAction SilentlyContinue
+        continue
+    }
+
+    # Renamed only on success, so an interrupted run leaves nothing that the
+    # existence check would mistake for a finished product.
+    Rename-Item -Path $partialPath -NewName (Split-Path $outputPath -Leaf) -Force
+
+    $sizeGB = (Get-Item $outputPath).Length / 1GB
+    Write-Host ("  Completed in {0:N1} min, {1:N2} GB" -f $elapsed.TotalMinutes, $sizeGB)
+}
+
+Write-Host ""
+Write-Host "All products processed."

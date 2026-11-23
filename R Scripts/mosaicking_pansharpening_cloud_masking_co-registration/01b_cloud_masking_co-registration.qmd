@@ -1,0 +1,297 @@
+---
+title: "WorldView 3 Cloud Masking with OmniMask and Co-registration"
+author: "Chafika Phiri"
+format: pdf
+editor: visual
+echo: false
+editor_options: 
+  chunk_output_type: console
+---
+
+**WorldView 3 Cloud Masking**
+
+This script applies the Omnimask algorithm for cloud and shadow masking to prepare the data input for Kremetart February imagery for further analysis.
+
+The workflow begins by loading the required packages.
+
+```{r}
+#| label: Packages
+
+library(terra)
+library(sf)
+library(reticulate) # provides an R interface to Python modules, classes, and functions.
+library(RStoolbox)
+
+```
+
+**Pansharpening**
+
+The multispectral mosaics for Kremetart and Mapungubwe were pansharpened using their corresponding panchromatic mosaics in GDAL 3.10.3. Pansharpening was performed using -r cubic resampling through the GDAL command-line utility, which supports multi-band multispectral imagery and can be executed directly for batch processing.
+
+**Cloud and shadow masking**
+
+Cloud and shadow masking is performed using the OmnicloudMask model. As the model is implemented in Python, the reticulate package is used to interface Python within the R environment.
+
+The OmnicloudMask model was trained on Sentinel-2 imagery with a spatial resolution of 10 m. To address compatibility issues, the higher-resolution WorldView-3 imagery (0.3 m) was resampled to 10 m before inference.
+
+```{python}
+
+# mask_krem_feb.py
+# Cloud and shadow mask for the Kremetart February pansharpened product.
+
+from pathlib import Path
+
+import numpy as np
+import rasterio
+from rasterio.enums import Resampling
+from omnicloudmask import predict_from_array
+
+DATA_ROOT = r"Data\Objective 3 Manuscript\Satellite Data\Data"
+
+IMAGE_PATH = rf"{DATA_ROOT}\Pansharpened\krem_feb_pansharpened.tif"
+MASK_PATH  = rf"{DATA_ROOT}\Masks\krem_feb_mask_10m.tif"
+
+# Band positions in the pansharpened file, which follows WorldView-3 order:
+# coastal, blue, green, yellow, red, red_edge, nir1, nir2.
+RED_BAND, GREEN_BAND, NIR_BAND = 5, 3, 7
+
+# OmniCloudMask expects input between 10 m and 50 m, so the 0.3 m product
+# is downsampled by a factor of roughly 33 before inference.
+TARGET_RESOLUTION = 10.0
+
+# Create the output folder, including any missing parent folders, before
+# anything is computed. This is what failed previously: GDAL will not create
+# a directory for you, so the write raised an error after inference had run.
+Path(MASK_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+with rasterio.open(IMAGE_PATH) as src:
+
+    # Work out the output shape that yields approximately 10 m pixels.
+    scale = src.res[0] / TARGET_RESOLUTION
+    out_height = int(src.height * scale)
+    out_width  = int(src.width  * scale)
+
+    # Block averaging is the correct downsampling function for continuous
+    # radiometry: each coarse pixel becomes the mean of its constituents.
+    stack = src.read(
+        [RED_BAND, GREEN_BAND, NIR_BAND],
+        out_shape=(3, out_height, out_width),
+        resampling=Resampling.average
+    ).astype("float32")
+
+    # The affine transform must be rebuilt for the coarser grid, otherwise
+    # the mask will not align with the imagery it was derived from.
+    transform = src.transform * src.transform.scale(
+        src.width  / out_width,
+        src.height / out_height
+    )
+    crs = src.crs
+
+print(f"Running inference on {out_height} x {out_width} pixels at ~10 m")
+
+# Returns 0 clear, 1 thick cloud, 2 thin cloud, 3 cloud shadow.
+# np.squeeze removes the leading singleton dimension the function returns.
+mask = np.squeeze(predict_from_array(stack)).astype("uint8")
+
+with rasterio.open(
+    MASK_PATH, "w",
+    driver="GTiff",
+    height=mask.shape[0], width=mask.shape[1],
+    count=1, dtype="uint8",
+    crs=crs, transform=transform,
+    compress="deflate"
+) as dst:
+    dst.write(mask, 1)
+
+# Reported only after the write has succeeded, so a failure cannot be
+# mistaken for a completed run.
+print(f"\nWritten: {MASK_PATH}")
+print(f"  clear:       {(mask == 0).mean():.1%}")
+print(f"  thick cloud: {(mask == 1).mean():.2%}")
+print(f"  thin cloud:  {(mask == 2).mean():.2%}")
+print(f"  shadow:      {(mask == 3).mean():.2%}")
+
+
+
+```
+
+Apply the generated mask to the 0.3m WorldView-3 image
+
+```{r}
+
+wv3_band_names <- c("coastal", "blue", "green", "yellow",
+                    "red", "red_edge", "nir1", "nir2")
+
+# Create the output folders, since terra will not create them either.
+dir.create("Data/Masked",       recursive = TRUE, showWarnings = FALSE)
+dir.create("Data/Coregistered", recursive = TRUE, showWarnings = FALSE)
+
+krem_feb <- rast("Data/Pansharpened/krem_feb_pansharpened.tif")
+names(krem_feb) <- wv3_band_names
+
+feb_mask_coarse <- rast("Data/Masks/krem_feb_mask_10m.tif")
+
+# Any class above zero is thick cloud, thin cloud or shadow.
+feb_mask_binary <- feb_mask_coarse > 0
+
+# A maximum filter over a 5x5 window expands the masked area by two cells in
+# every direction, a 20 m buffer at the mask's own resolution. Cloud shadow
+# boundaries are diffuse, and the penumbra extends beyond what the classifier
+# flags, so partially shadowed crowns would otherwise survive into the output
+# and fragment during segmentation.
+feb_mask_dilated <- focal(feb_mask_binary, w = 5, fun = "max", na.rm = TRUE)
+
+# Nearest neighbour is mandatory for categorical data. Averaging would create
+# intermediate values corresponding to no class.
+feb_mask_fine <- resample(feb_mask_dilated, krem_feb, method = "near")
+
+# Set masked pixels to NA across all eight bands, writing straight to disk
+# rather than holding a multi-gigabyte result in memory.
+krem_feb_masked <- mask(
+  krem_feb, feb_mask_fine,
+  maskvalues = 1, updatevalue = NA,
+  filename = "Data/Masked/krem_feb_masked.tif",
+  overwrite = TRUE,
+  datatype = "INT2U",
+  NAflag   = 65535,
+  gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS")
+)
+
+krem_feb_masked
+
+#plotRGB(krem_feb_masked, r=5, g=3, b=2, stretch="lin", axes=TRUE, main="Krem feb 2024")
+
+```
+
+**Image-to-image co-registration**
+
+This sections performs image co-registration of WorldView-3 multispectral imagery from Kremetart, South Africa \| Target: February \| Reference: July. Method: mutual information (RStoolbox::coregisterImages)
+
+```{r}
+
+# --------------------------------------------------------------------
+# Co-registration: Kremetart February to July (RStoolbox, two-stage MI)
+# --------------------------------------------------------------------
+
+library(terra)
+library(RStoolbox)
+
+# ---- Paths ----
+base_dir <- "/Objective 3 Manuscript/Satellite Data/Data"
+
+target_path <- file.path(base_dir, "Masked",       "krem_feb_masked.tif")
+ref_path    <- file.path(base_dir, "Pansharpened", "krem_july_pansharpened.tif")
+out_path    <- file.path(base_dir, "Coregistered", "krem_feb_coreg.tif")
+
+dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
+stopifnot(file.exists(target_path), file.exists(ref_path))
+
+wv3_band_names <- c("coastal", "blue", "green", "yellow",
+                    "red", "red_edge", "nir1", "nir2")
+
+# ---- Load ----
+krem_target <- rast(target_path)   # February, moved
+krem_ref    <- rast(ref_path)      # July, fixed
+
+names(krem_target) <- wv3_band_names
+names(krem_ref)    <- wv3_band_names
+
+# CRS and pixel size must match or the search is meaningless.
+stopifnot(
+  same.crs(krem_target, krem_ref),
+  all(abs(res(krem_target) - res(krem_ref)) < 1e-6)
+)
+
+# ---- Prepare search bands ----
+search_band <- 5   # red: stable features across the wet-dry transition
+
+overlap     <- intersect(ext(krem_target), ext(krem_ref))
+target_band <- crop(krem_target[[search_band]], overlap)
+ref_band    <- crop(krem_ref[[search_band]],    overlap)
+
+# Mask both identically, so cloud gaps cannot bias the joint histogram.
+
+valid_cells   <- !is.na(target_band)
+target_search <- subst(mask(target_band, valid_cells, maskvalues = FALSE), NA, 0)
+ref_search    <- subst(mask(ref_band,    valid_cells, maskvalues = FALSE), NA, 0)
+
+rm(target_band, ref_band, valid_cells)
+
+# coarse search at 1.2 m
+
+target_coarse <- aggregate(target_search, fact = 4, fun = "mean")
+ref_coarse    <- aggregate(ref_search,    fact = 4, fun = "mean")
+
+coreg_coarse <- coregisterImages(
+  img = target_coarse, ref = ref_coarse,
+  shift = 10, shiftInc = 1,          # +/- 12 m
+  nSamples = 10000, nBins = 100,
+  reportStats = TRUE, verbose = TRUE
+)
+
+# Derive the offset from the returned extent, not from bestShift units.
+
+dx_coarse <- xmin(coreg_coarse$coregImg) - xmin(target_coarse)
+dy_coarse <- ymin(coreg_coarse$coregImg) - ymin(target_coarse)
+
+cat(sprintf("Coarse: %+.2f m E, %+.2f m N\n", dx_coarse, dy_coarse))
+
+if (max(abs(c(dx_coarse, dy_coarse))) >= 10 * res(target_coarse)[1]) {
+  warning("Coarse shift hit the search limit; widen and re-run.")
+}
+
+# ---- Stage 2: refinement at 0.3 m ----
+target_shifted <- shift(target_search, dx = dx_coarse, dy = dy_coarse)
+
+coreg_fine <- coregisterImages(
+  img = target_shifted, ref = ref_search,
+  shift = 4, shiftInc = 1,           # +/- 1.2 m
+  nSamples = 20000, nBins = 100,
+  reportStats = TRUE, verbose = TRUE
+)
+
+dx_fine <- xmin(coreg_fine$coregImg) - xmin(target_shifted)
+dy_fine <- ymin(coreg_fine$coregImg) - ymin(target_shifted)
+
+if (max(abs(c(dx_fine, dy_fine))) >= 4 * res(target_shifted)[1]) {
+  warning("Fine shift hit the search limit; widen and re-run.")
+}
+
+dx_total <- dx_coarse + dx_fine
+dy_total <- dy_coarse + dy_fine
+
+cat(sprintf("Total:  %+.2f m E, %+.2f m N  (%+.1f, %+.1f px)\n",
+            dx_total, dy_total,
+            dx_total / xres(krem_target), dy_total / yres(krem_target)))
+
+# Apply to all eight bands
+
+krem_feb_aligned <- shift(krem_target, dx = dx_total, dy = dy_total)
+
+# ---- Export
+
+writeRaster(
+  krem_feb_aligned,
+  filename  = out_path,
+  datatype  = "INT2U",
+  NAflag    = 65535,                 # keep masked pixels distinct from 0
+  gdal      = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES",
+                "NUM_THREADS=ALL_CPUS"),
+  overwrite = TRUE
+)
+
+# Visual check
+
+check_window <- ext(762000, 762200, 7462500, 7462700)   # adjust to your scene
+
+op <- par(mfrow = c(1, 2))
+plotRGB(crop(krem_ref,          check_window), r = 5, g = 3, b = 2,
+        stretch = "lin", main = "July (reference)")
+plotRGB(crop(krem_feb_aligned,  check_window), r = 5, g = 3, b = 2,
+        stretch = "lin", main = "February (aligned)")
+par(op)
+
+cat("\nWritten:", out_path, "\n")
+
+
+```
